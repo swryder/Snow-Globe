@@ -1,0 +1,58 @@
+name: Snow Globe
+options:
+  bundleIdPrefix: com.swryder
+  deploymentTarget:
+    macOS: '14.0'
+packages:
+  SnowGlobe:
+    path: .
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    MACOSX_DEPLOYMENT_TARGET: '14.0'
+    CODE_SIGN_IDENTITY: '-'
+    CODE_SIGN_STYLE: Manual
+targets:
+  Snow Globe:
+    type: application
+    platform: macOS
+    sources:
+      - Examples/SnowGlobeDemo
+    dependencies:
+      - package: SnowGlobe
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.swryder.SnowGlobe
+        PRODUCT_NAME: Snow Globe
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Snow Globe
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+        ENABLE_HARDENED_RUNTIME: YES
+        SWIFT_STRICT_CONCURRENCY: minimal
+  SnowGlobeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/SnowGlobeTests
+        excludes: [Fixtures]
+      - path: Tests/SnowGlobeTests/Fixtures
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: SnowGlobe
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Snow Globe:
+    build:
+      targets:
+        Snow Globe: all
+        SnowGlobeTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: true
+      targets:
+        - SnowGlobeTests

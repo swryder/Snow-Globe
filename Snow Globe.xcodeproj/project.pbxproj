@@ -1,0 +1,459 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		344A7594AC196B60C8238052 /* Fixtures in Resources */ = {isa = PBXBuildFile; fileRef = A93FCAE84E886141EADDD2E1 /* Fixtures */; };
+		5CBE065F43ACF8EAE5394211 /* SnowGlobe in Frameworks */ = {isa = PBXBuildFile; productRef = 672A2195AF1EA908D7C02485 /* SnowGlobe */; };
+		C1A54F01EE9F69BD49A8626D /* SnowGlobeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C5B499A90A6BD5FBD8019D9 /* SnowGlobeApp.swift */; };
+		C5A2E7062EFFADD4C5E5A81A /* RenderValidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AFE97BA8E22D2FBD36F2BB3 /* RenderValidation.swift */; };
+		E02524D4887BC130E00EEFFE /* SnowGlobe in Frameworks */ = {isa = PBXBuildFile; productRef = 74F6D208780E035642CFC4E6 /* SnowGlobe */; };
+		F2D25162DB8D10482AEBC693 /* SpeechController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE1EF96B8BB58BA3786C63BE /* SpeechController.swift */; };
+		FB980D0554B3F4174B565EBB /* SnowGlobeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE24EFC797EC1F4BCBBD26EE /* SnowGlobeTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0028BC8A17A47F0C4BB61205 /* SnowGlobeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SnowGlobeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		01729DC8AD04848010DECF98 /* package-extraction */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "package-extraction"; path = .; sourceTree = SOURCE_ROOT; };
+		1AFE97BA8E22D2FBD36F2BB3 /* RenderValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderValidation.swift; sourceTree = "<group>"; };
+		5DDDEF9D5FCF0DD04461ECE9 /* Snow Globe.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Snow Globe.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		9C5B499A90A6BD5FBD8019D9 /* SnowGlobeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnowGlobeApp.swift; sourceTree = "<group>"; };
+		A93FCAE84E886141EADDD2E1 /* Fixtures */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Fixtures; path = Tests/SnowGlobeTests/Fixtures; sourceTree = SOURCE_ROOT; };
+		BE24EFC797EC1F4BCBBD26EE /* SnowGlobeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnowGlobeTests.swift; sourceTree = "<group>"; };
+		CE1EF96B8BB58BA3786C63BE /* SpeechController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechController.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		3F0E58968BC0E1705C2F9B75 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5CBE065F43ACF8EAE5394211 /* SnowGlobe in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8E3314B012BE185365051B44 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E02524D4887BC130E00EEFFE /* SnowGlobe in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		39D4E5A40AFDAAEB2BFCDE99 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				5DDDEF9D5FCF0DD04461ECE9 /* Snow Globe.app */,
+				0028BC8A17A47F0C4BB61205 /* SnowGlobeTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		6200FC548F3D08D6579D6A85 = {
+			isa = PBXGroup;
+			children = (
+				A93FCAE84E886141EADDD2E1 /* Fixtures */,
+				D5623B2BBC834508DB59F97D /* Packages */,
+				F372D9DF9B9DA587F88017FC /* SnowGlobeDemo */,
+				F75445CD9D5CDD27AF8BBB67 /* SnowGlobeTests */,
+				39D4E5A40AFDAAEB2BFCDE99 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		D5623B2BBC834508DB59F97D /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				01729DC8AD04848010DECF98 /* package-extraction */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		F372D9DF9B9DA587F88017FC /* SnowGlobeDemo */ = {
+			isa = PBXGroup;
+			children = (
+				9C5B499A90A6BD5FBD8019D9 /* SnowGlobeApp.swift */,
+				CE1EF96B8BB58BA3786C63BE /* SpeechController.swift */,
+			);
+			name = SnowGlobeDemo;
+			path = Examples/SnowGlobeDemo;
+			sourceTree = "<group>";
+		};
+		F75445CD9D5CDD27AF8BBB67 /* SnowGlobeTests */ = {
+			isa = PBXGroup;
+			children = (
+				1AFE97BA8E22D2FBD36F2BB3 /* RenderValidation.swift */,
+				BE24EFC797EC1F4BCBBD26EE /* SnowGlobeTests.swift */,
+			);
+			name = SnowGlobeTests;
+			path = Tests/SnowGlobeTests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1EFFDEDA001DFCBABAE7E613 /* SnowGlobeTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2DAB3B377CE80239085130DE /* Build configuration list for PBXNativeTarget "SnowGlobeTests" */;
+			buildPhases = (
+				42DA892DF77B77254FDBDA7B /* Sources */,
+				64F0C9949C5FB367D1220299 /* Resources */,
+				8E3314B012BE185365051B44 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SnowGlobeTests;
+			packageProductDependencies = (
+				74F6D208780E035642CFC4E6 /* SnowGlobe */,
+			);
+			productName = SnowGlobeTests;
+			productReference = 0028BC8A17A47F0C4BB61205 /* SnowGlobeTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		C5A3E2A9EDCA3495014252CA /* Snow Globe */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4D9090B90B2C31FC76451ECC /* Build configuration list for PBXNativeTarget "Snow Globe" */;
+			buildPhases = (
+				8BD636975F40D8D58EDE10BF /* Sources */,
+				3F0E58968BC0E1705C2F9B75 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "Snow Globe";
+			packageProductDependencies = (
+				672A2195AF1EA908D7C02485 /* SnowGlobe */,
+			);
+			productName = "Snow Globe";
+			productReference = 5DDDEF9D5FCF0DD04461ECE9 /* Snow Globe.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		9E8AD1BE715C5BE2FE17244F /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					1EFFDEDA001DFCBABAE7E613 = {
+						ProvisioningStyle = Manual;
+					};
+					C5A3E2A9EDCA3495014252CA = {
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = 5B67472392914A4C8E6D5681 /* Build configuration list for PBXProject "Snow Globe" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 6200FC548F3D08D6579D6A85;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				C2BFCD005E69A10DF81AC94E /* XCLocalSwiftPackageReference "." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 39D4E5A40AFDAAEB2BFCDE99 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				C5A3E2A9EDCA3495014252CA /* Snow Globe */,
+				1EFFDEDA001DFCBABAE7E613 /* SnowGlobeTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		64F0C9949C5FB367D1220299 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				344A7594AC196B60C8238052 /* Fixtures in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		42DA892DF77B77254FDBDA7B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C5A2E7062EFFADD4C5E5A81A /* RenderValidation.swift in Sources */,
+				FB980D0554B3F4174B565EBB /* SnowGlobeTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8BD636975F40D8D58EDE10BF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C1A54F01EE9F69BD49A8626D /* SnowGlobeApp.swift in Sources */,
+				F2D25162DB8D10482AEBC693 /* SpeechController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		1F5DD2BD23318EAC9F4FD312 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Snow Globe";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.swryder.SnowGlobe;
+				PRODUCT_NAME = "Snow Globe";
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+			};
+			name = Release;
+		};
+		52FE5B531A488E53387189B7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.swryder.SnowGlobeTests;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		7C115A583FA166D6A337E723 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A53FFA1D918292325BC7CE7E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.swryder.SnowGlobeTests;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		AC1A769E6730E757F97ECB63 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Snow Globe";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.swryder.SnowGlobe;
+				PRODUCT_NAME = "Snow Globe";
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+			};
+			name = Debug;
+		};
+		DE7096BC1A5376152C2B0B0F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		2DAB3B377CE80239085130DE /* Build configuration list for PBXNativeTarget "SnowGlobeTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				52FE5B531A488E53387189B7 /* Debug */,
+				A53FFA1D918292325BC7CE7E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		4D9090B90B2C31FC76451ECC /* Build configuration list for PBXNativeTarget "Snow Globe" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AC1A769E6730E757F97ECB63 /* Debug */,
+				1F5DD2BD23318EAC9F4FD312 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		5B67472392914A4C8E6D5681 /* Build configuration list for PBXProject "Snow Globe" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7C115A583FA166D6A337E723 /* Debug */,
+				DE7096BC1A5376152C2B0B0F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		C2BFCD005E69A10DF81AC94E /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		672A2195AF1EA908D7C02485 /* SnowGlobe */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SnowGlobe;
+		};
+		74F6D208780E035642CFC4E6 /* SnowGlobe */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SnowGlobe;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 9E8AD1BE715C5BE2FE17244F /* Project object */;
+}
