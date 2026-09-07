@@ -10,6 +10,7 @@ public struct SnowGlobeView: View {
     private let configuration: SnowGlobeConfiguration
     private let speechMeter: SpeechMeter?
     private let glassBackdrop: GlassBackdrop?
+    private let motion: GlobeMotion?
     private let onError: ((Error) -> Void)?
     @Environment(\.colorScheme) private var colorScheme
     @State private var failure: String?
@@ -20,16 +21,19 @@ public struct SnowGlobeView: View {
     ///   - configuration: Shared, tuned defaults unless explicitly overridden.
     ///   - speechMeter: A persistent, thread-safe mailbox fed using actual audio playback time.
     ///   - glassBackdrop: Optional local image for refraction behind a transparent globe.
+    ///   - motion: Optional physical input; also enables automatic window inertia on macOS.
     ///   - onError: Called on the main queue if Metal initialization fails.
     public init(activity: Float = 0, isConnected: Bool = true,
                 configuration: SnowGlobeConfiguration = .default,
                 speechMeter: SpeechMeter? = nil, glassBackdrop: GlassBackdrop? = nil,
+                motion: GlobeMotion? = nil,
                 onError: ((Error) -> Void)? = nil) {
         self.activity = activity
         self.isConnected = isConnected
         self.configuration = configuration
         self.speechMeter = speechMeter
         self.glassBackdrop = glassBackdrop
+        self.motion = motion
         self.onError = onError
     }
 
@@ -39,7 +43,7 @@ public struct SnowGlobeView: View {
         ZStack {
             MetalGlobe(activity: activity, isConnected: isConnected,
                        configuration: configuration.normalized, dark: dark, speechMeter: speechMeter,
-                       glassBackdrop: glassBackdrop) { error in
+                       glassBackdrop: glassBackdrop, motion: motion) { error in
                 failure = error.localizedDescription
                 onError?(error)
             }
@@ -62,6 +66,7 @@ private struct MetalGlobe {
     let dark: Bool
     let speechMeter: SpeechMeter?
     let glassBackdrop: GlassBackdrop?
+    let motion: GlobeMotion?
     let onError: (Error) -> Void
 
     final class Coordinator {
@@ -108,6 +113,8 @@ private struct MetalGlobe {
         renderer.targetGlassEffect = configuration.glassEffect
         renderer.opacity = configuration.opacity
         renderer.glassBackdrop = glassBackdrop
+        renderer.motionInput = motion
+        renderer.motionSensitivity = configuration.motionSensitivity
         renderer.transparentBackground = configuration.transparentBackground
         renderer.speechMeter = speechMeter
         if speechMeter == nil {

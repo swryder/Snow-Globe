@@ -18,6 +18,7 @@ final class SnowGlobeTests: XCTestCase {
         XCTAssertFalse(value.transparentBackground)
         XCTAssertEqual(value.glassEffect,0.45)
         XCTAssertEqual(value.opacity,1)
+        XCTAssertEqual(value.motionSensitivity,1)
         var invalid = value
         invalid.particleCount = Int.max
         invalid.particleSize = .nan
@@ -28,6 +29,7 @@ final class SnowGlobeTests: XCTestCase {
         invalid.speechExpression = 3
         invalid.glassEffect = .nan
         invalid.opacity = 2
+        invalid.motionSensitivity = .infinity
         let safe = invalid.normalized
         XCTAssertEqual(safe.particleCount, 33_600)
         XCTAssertEqual(safe.particleSize, value.particleSize)
@@ -38,6 +40,9 @@ final class SnowGlobeTests: XCTestCase {
         XCTAssertEqual(safe.speechExpression, 2)
         XCTAssertEqual(safe.glassEffect,value.glassEffect)
         XCTAssertEqual(safe.opacity,1)
+        XCTAssertEqual(safe.motionSensitivity,1)
+        invalid.motionSensitivity = -1
+        XCTAssertEqual(invalid.normalized.motionSensitivity,0)
         invalid.particleCount = Int.min
         XCTAssertEqual(invalid.normalized.particleCount, 10)
     }

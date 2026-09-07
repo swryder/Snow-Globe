@@ -17,6 +17,10 @@ public struct SnowGlobeConfiguration: Equatable, Sendable {
     public static let flashFactorRange: ClosedRange<Float> = 0...8
     public static let glassEffectRange: ClosedRange<Float> = 0...1
 
+    public static let motionSensitivityRange: ClosedRange<Float> = 0...2
+
+    /// Physical movement gain when a GlobeMotion input is supplied. Zero disables it.
+    public var motionSensitivity: Float
     public var appearance: Appearance
     /// The container is always a sphere; this selects the internal particle distribution.
     public var shape: Shape
@@ -45,7 +49,9 @@ public struct SnowGlobeConfiguration: Equatable, Sendable {
                 idleSpeed: Float = 4, trailLength: Float = 0.30,
                 speakingTrailLength: Float = 0.50, speechExpression: Float = 1,
                 speechMode: SpeechMode = .live, flashFactor: Float = 3,
-                transparentBackground: Bool = false, glassEffect: Float = 0.45, opacity: Float = 1) {
+                transparentBackground: Bool = false, glassEffect: Float = 0.45, opacity: Float = 1,
+                motionSensitivity: Float = 1) {
+        self.motionSensitivity = motionSensitivity
         self.appearance = appearance
         self.shape = shape
         self.particleCount = particleCount
@@ -73,6 +79,7 @@ public struct SnowGlobeConfiguration: Equatable, Sendable {
         result.flashFactor = sanitized(flashFactor, in: Self.flashFactorRange, fallback: Self.default.flashFactor)
         result.glassEffect = sanitized(glassEffect, in: Self.glassEffectRange, fallback: Self.default.glassEffect)
         result.opacity = sanitized(opacity, in: 0...1, fallback: 1)
+        result.motionSensitivity = sanitized(motionSensitivity, in: Self.motionSensitivityRange, fallback: 1)
         return result
     }
 }

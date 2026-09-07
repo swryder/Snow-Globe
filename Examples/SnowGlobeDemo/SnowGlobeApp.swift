@@ -67,8 +67,8 @@ final class SnowGlobeWindowController: NSObject, NSApplicationDelegate, NSWindow
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-            window.contentMinSize = NSSize(width: 540, height: 730)
-            window.setContentSize(NSSize(width: 1000, height: 868))
+            window.contentMinSize = NSSize(width: 540, height: 790)
+            window.setContentSize(NSSize(width: 1000, height: 928))
             window.appearance = NSAppearance(named: CommandLine.arguments.contains("--light") ? .aqua : .darkAqua)
             window.isReleasedWhenClosed = false
             window.center()
@@ -110,6 +110,8 @@ struct ContentView: View {
     @State private var floating = false
     @State private var transparency: Double = 0.25
     @State private var glassEffect = Double(SnowGlobeConfiguration.default.glassEffect)
+    @State private var motion = GlobeMotion()
+    @State private var motionSensitivity = Double(SnowGlobeConfiguration.default.motionSensitivity)
     @StateObject private var desktopGlass = DesktopGlassCapture()
 
     init() {
@@ -150,7 +152,8 @@ struct ContentView: View {
                                speechExpression: Float(speechExpression),
                                speechMode: liveWaveform ? .live : .flowing, flashFactor: Float(flashFactor),
                                transparentBackground: floating,glassEffect: Float(glassEffect),
-                               opacity: floating ? Float(1-transparency) : 1)
+                               opacity: floating ? Float(1-transparency) : 1,
+                               motionSensitivity: Float(motionSensitivity))
     }
 
     private var foreground: Color { dark ? Color(white: 0.92) : Color(white: 0.16) }
@@ -222,7 +225,7 @@ struct ContentView: View {
 
                 GlobeSurface(globe: SnowGlobeView(activity: Float(activity), isConnected: connected,
                                                    configuration: globeConfiguration, speechMeter: speech.meter,
-                                                   glassBackdrop: desktopGlass.backdrop),
+                                                   glassBackdrop: desktopGlass.backdrop, motion: motion),
                              isFloating: floating,
                              glassEffect: glassEffect,capture: desktopGlass)
                     .frame(maxWidth: .infinity, maxHeight: floating ? 0 : .infinity)
@@ -237,6 +240,15 @@ struct ContentView: View {
                             .font(.system(size: 12, weight: .medium))
                             .help("Move the globe into a borderless desktop overlay and keep this window for controls.")
                         Spacer()
+                    }
+                    HStack(alignment: .bottom, spacing: 18) {
+                        tuningSlider("Motion sensitivity",value: $motionSensitivity,range: 0...2,
+                                     readout: motionSensitivity < 0.005 ? "Off" : "\(Int((motionSensitivity*100).rounded()))%")
+                            .help("Drag the globe or its window to stir the particles. Settled snow responds most strongly; AI currents reduce the influence.")
+                        Button("Shake globe", systemImage: "hand.draw") { motion.shake() }
+                            .controlSize(.small)
+                            .disabled(motionSensitivity < 0.005)
+                            .padding(.bottom, 2)
                     }
                     tuningSlider("Glass effect",value: $glassEffect,range: 0...1,
                                  readout: glassEffect < 0.005 ? "Off" : "\(Int((glassEffect*100).rounded()))%")
@@ -423,7 +435,7 @@ struct ContentView: View {
                 .padding(.bottom, 30)
             }
         }
-        .frame(minWidth: 540, minHeight: floating ? 680 : 730)
+        .frame(minWidth: 540, minHeight: floating ? 740 : 790)
         .preferredColorScheme(dark ? .dark : .light)
         .onChange(of: dark) { _, value in
             NSApp.windows.first(where: { $0.identifier?.rawValue == "snow-globe-controls" })?.appearance = NSAppearance(named: value ? .darkAqua : .aqua)

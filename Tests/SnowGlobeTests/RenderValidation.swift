@@ -26,7 +26,7 @@ enum RenderValidation {
 
     static func run(directory: String, speechAudioURL: URL) throws {
         try require(MemoryLayout<Particle>.stride == 64, "Particle CPU/GPU layout mismatch")
-        try require(MemoryLayout<Uniforms>.stride == 208, "Uniform CPU/GPU layout mismatch")
+        try require(MemoryLayout<Uniforms>.stride == 240, "Uniform CPU/GPU layout mismatch")
         let output = URL(fileURLWithPath: directory, isDirectory: true)
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         // Keep established visual regressions at their reference settings.

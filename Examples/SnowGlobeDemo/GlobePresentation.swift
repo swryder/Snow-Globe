@@ -112,10 +112,10 @@ struct GlobeSurface: NSViewRepresentable {
         private func resizeControls(_ controls: NSWindow, floating: Bool) {
             controls.title = floating ? "Snow Globe Controls" : "Snow Globe"
             controls.titleVisibility = floating ? .visible : .hidden
-            controls.contentMinSize = NSSize(width: 540,height: floating ? 680 : 730)
+            controls.contentMinSize = NSSize(width: 540,height: floating ? 740 : 790)
             if floating {
                 let top = controls.frame.maxY
-                controls.setContentSize(NSSize(width: 620,height: 710))
+                controls.setContentSize(NSSize(width: 620,height: 770))
                 controls.setFrameOrigin(NSPoint(x: controls.frame.minX,y: top-controls.frame.height))
             } else if let frame = embeddedWindowFrame {
                 controls.setFrame(frame,display: true)

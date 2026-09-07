@@ -7,10 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		3B9E0C3A7F2845DAB4561003 /* DesktopGlassCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B9E0C3A7F2845DAB4561004 /* DesktopGlassCapture.swift */; };
-		3B9E0C3A7F2845DAB4561001 /* GlobePresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B9E0C3A7F2845DAB4561002 /* GlobePresentation.swift */; };
 		344A7594AC196B60C8238052 /* Fixtures in Resources */ = {isa = PBXBuildFile; fileRef = A93FCAE84E886141EADDD2E1 /* Fixtures */; };
 		5CBE065F43ACF8EAE5394211 /* SnowGlobe in Frameworks */ = {isa = PBXBuildFile; productRef = 672A2195AF1EA908D7C02485 /* SnowGlobe */; };
+		6D5C7C47D5FC1D701B215B0E /* GlobePresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2BFF681250D5D98291010E8 /* GlobePresentation.swift */; };
+		85EBFE8119C43CB2B2D5C406 /* DesktopGlassCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74FF4D9D5E8EFA7105FA92CE /* DesktopGlassCapture.swift */; };
+		B2CED364AEABCAE678A1BBA6 /* MotionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E7FDD31016B2F4DDA372B24 /* MotionTests.swift */; };
 		C1A54F01EE9F69BD49A8626D /* SnowGlobeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C5B499A90A6BD5FBD8019D9 /* SnowGlobeApp.swift */; };
 		C5A2E7062EFFADD4C5E5A81A /* RenderValidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AFE97BA8E22D2FBD36F2BB3 /* RenderValidation.swift */; };
 		E02524D4887BC130E00EEFFE /* SnowGlobe in Frameworks */ = {isa = PBXBuildFile; productRef = 74F6D208780E035642CFC4E6 /* SnowGlobe */; };
@@ -19,16 +20,17 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		3B9E0C3A7F2845DAB4561004 /* DesktopGlassCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopGlassCapture.swift; sourceTree = "<group>"; };
-		3B9E0C3A7F2845DAB4561002 /* GlobePresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobePresentation.swift; sourceTree = "<group>"; };
 		0028BC8A17A47F0C4BB61205 /* SnowGlobeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SnowGlobeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		01729DC8AD04848010DECF98 /* package-extraction */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "package-extraction"; path = .; sourceTree = SOURCE_ROOT; };
 		1AFE97BA8E22D2FBD36F2BB3 /* RenderValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderValidation.swift; sourceTree = "<group>"; };
+		2E7FDD31016B2F4DDA372B24 /* MotionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionTests.swift; sourceTree = "<group>"; };
 		5DDDEF9D5FCF0DD04461ECE9 /* Snow Globe.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Snow Globe.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		74FF4D9D5E8EFA7105FA92CE /* DesktopGlassCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopGlassCapture.swift; sourceTree = "<group>"; };
+		931D586AAEBE49DCFEB1EAC8 /* Snow Globe */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "Snow Globe"; path = .; sourceTree = SOURCE_ROOT; };
 		9C5B499A90A6BD5FBD8019D9 /* SnowGlobeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnowGlobeApp.swift; sourceTree = "<group>"; };
 		A93FCAE84E886141EADDD2E1 /* Fixtures */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Fixtures; path = Tests/SnowGlobeTests/Fixtures; sourceTree = SOURCE_ROOT; };
 		BE24EFC797EC1F4BCBBD26EE /* SnowGlobeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnowGlobeTests.swift; sourceTree = "<group>"; };
 		CE1EF96B8BB58BA3786C63BE /* SpeechController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechController.swift; sourceTree = "<group>"; };
+		E2BFF681250D5D98291010E8 /* GlobePresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobePresentation.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -74,7 +76,7 @@
 		D5623B2BBC834508DB59F97D /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				01729DC8AD04848010DECF98 /* package-extraction */,
+				931D586AAEBE49DCFEB1EAC8 /* Snow Globe */,
 			);
 			name = Packages;
 			sourceTree = "<group>";
@@ -82,9 +84,9 @@
 		F372D9DF9B9DA587F88017FC /* SnowGlobeDemo */ = {
 			isa = PBXGroup;
 			children = (
+				74FF4D9D5E8EFA7105FA92CE /* DesktopGlassCapture.swift */,
+				E2BFF681250D5D98291010E8 /* GlobePresentation.swift */,
 				9C5B499A90A6BD5FBD8019D9 /* SnowGlobeApp.swift */,
-				3B9E0C3A7F2845DAB4561002 /* GlobePresentation.swift */,
-				3B9E0C3A7F2845DAB4561004 /* DesktopGlassCapture.swift */,
 				CE1EF96B8BB58BA3786C63BE /* SpeechController.swift */,
 			);
 			name = SnowGlobeDemo;
@@ -94,6 +96,7 @@
 		F75445CD9D5CDD27AF8BBB67 /* SnowGlobeTests */ = {
 			isa = PBXGroup;
 			children = (
+				2E7FDD31016B2F4DDA372B24 /* MotionTests.swift */,
 				1AFE97BA8E22D2FBD36F2BB3 /* RenderValidation.swift */,
 				BE24EFC797EC1F4BCBBD26EE /* SnowGlobeTests.swift */,
 			);
@@ -153,9 +156,11 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					1EFFDEDA001DFCBABAE7E613 = {
+						DevelopmentTeam = 2NYQ5ZAM48;
 						ProvisioningStyle = Manual;
 					};
 					C5A3E2A9EDCA3495014252CA = {
+						DevelopmentTeam = 2NYQ5ZAM48;
 						ProvisioningStyle = Manual;
 					};
 				};
@@ -199,6 +204,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B2CED364AEABCAE678A1BBA6 /* MotionTests.swift in Sources */,
 				C5A2E7062EFFADD4C5E5A81A /* RenderValidation.swift in Sources */,
 				FB980D0554B3F4174B565EBB /* SnowGlobeTests.swift in Sources */,
 			);
@@ -208,9 +214,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				85EBFE8119C43CB2B2D5C406 /* DesktopGlassCapture.swift in Sources */,
+				6D5C7C47D5FC1D701B215B0E /* GlobePresentation.swift in Sources */,
 				C1A54F01EE9F69BD49A8626D /* SnowGlobeApp.swift in Sources */,
-				3B9E0C3A7F2845DAB4561001 /* GlobePresentation.swift in Sources */,
-				3B9E0C3A7F2845DAB4561003 /* DesktopGlassCapture.swift in Sources */,
 				F2D25162DB8D10482AEBC693 /* SpeechController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -289,9 +295,9 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_IDENTITY = "Apple Development: Scott Ryder (P89GW6LDHS)";
 				CODE_SIGN_STYLE = Manual;
-				DEVELOPMENT_TEAM = 2NYQ5ZAM48;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 2NYQ5ZAM48;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -391,9 +397,9 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_IDENTITY = "Apple Development: Scott Ryder (P89GW6LDHS)";
 				CODE_SIGN_STYLE = Manual;
-				DEVELOPMENT_TEAM = 2NYQ5ZAM48;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 2NYQ5ZAM48;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;

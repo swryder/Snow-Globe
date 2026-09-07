@@ -28,6 +28,8 @@ struct Uniforms {
     var connection: SIMD4<Float>
     var optics: SIMD4<Float>
     var backdropUV: SIMD4<Float>
+    var inertia: SIMD4<Float>
+    var gravity: SIMD4<Float>
 }
 
 enum RendererFailure: LocalizedError {
@@ -79,6 +81,33 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
 
     var speechMeter: SpeechMeter?
     var glassBackdrop: GlassBackdrop?
+    var motionInput: GlobeMotion? {
+        didSet {
+            if motionInput !== oldValue {
+                windowMotion = GlobeWindowMotion()
+                motionTarget = .zero
+                physicalAcceleration = .zero
+                gravityDirection = SIMD3(0, -1, 0)
+                gravityTarget = gravityDirection
+                agitation = 0
+            }
+        }
+    }
+    var motionSensitivity: Float = 1
+    private var windowMotion = GlobeWindowMotion()
+    private var motionTarget = SIMD3<Float>.zero
+    private var gravityTarget = SIMD3<Float>(0, -1, 0)
+    private(set) var physicalAcceleration = SIMD3<Float>.zero
+    private(set) var gravityDirection = SIMD3<Float>(0, -1, 0)
+    private(set) var agitation: Float = 0
+
+    func sampleMotion(at time: Double, windowAcceleration: SIMD3<Float> = .zero) {
+        let sample = motionInput?.snapshot(at: time)
+        let gain = sanitized(motionSensitivity, in: 0...2, fallback: 1)
+        motionTarget = sample == nil ? .zero : boundedMotion((sample!.acceleration + windowAcceleration) * gain, limit: 40)
+        gravityTarget = gain > 0 ? (sample?.gravity ?? SIMD3(0, -1, 0)) : SIMD3(0, -1, 0)
+    }
+
     var targetGlassEffect: Float = 0
     private(set) var glassEffect: Float = 0
     var opacity: Float = 1
@@ -242,7 +271,9 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
                  speechMode: SIMD4(liveWaveform, Float(SpeechEnvelope.waveformDuration), targetSpeechWaveform.count == SpeechEnvelope.waveformSamples ? 1 : 0, Float(SpeechEnvelope.waveformSamples)),
                  connection: SIMD4(connection,targetConnected ? 1 : 0,transparentBackground ? 1 : 0,0),
                  optics: SIMD4(glassEffect,opacity,0,0),
-                 backdropUV: SIMD4(0,0,1,1))
+                 backdropUV: SIMD4(0,0,1,1),
+                 inertia: SIMD4(physicalAcceleration, agitation),
+                 gravity: SIMD4(gravityDirection, motionInput != nil && motionSensitivity > 0 ? 1 : 0))
     }
 
     private func dispatch(_ encoder: MTLComputeCommandEncoder, _ pipeline: MTLComputePipelineState) {
@@ -297,6 +328,17 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
     /// whether a display runs at 60 Hz, 120 Hz, or changes refresh rate.
     func step(command: MTLCommandBuffer, clockRate: Float? = nil) {
         let dt = Self.fixedStep
+        if motionInput != nil && motionSensitivity > 0 {
+            physicalAcceleration += (motionTarget - physicalAcceleration) * (1-exp(-dt*30))
+            let rotation = simd_quatf(from: gravityDirection, to: gravityTarget)
+            gravityDirection = simd_slerp(simd_quatf(angle: 0, axis: SIMD3(1,0,0)),
+                                          rotation, 1-exp(-dt*12)).act(gravityDirection)
+            agitation = max(agitation * exp(-dt*1.8), min(1, simd_length(physicalAcceleration)/7))
+        } else {
+            physicalAcceleration = .zero
+            gravityDirection = SIMD3(0, -1, 0)
+            agitation = 0
+        }
         glassEffect += (min(1,max(0,targetGlassEffect))-glassEffect)*(1-exp(-dt*8))
         connection += ((targetConnected ? Float(1) : 0)-connection)*(1-exp(-dt*2.5))
         let voice = targetConnected ? simd_clamp(targetSpeech, SIMD2<Float>.zero, SIMD2<Float>(repeating: 1)) : .zero
@@ -510,6 +552,18 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
             targetSpeechWaveform = snapshot.waveform
             targetSpeechSessionActive = snapshot.sessionActive
         }
+        #if os(macOS)
+        var windowAcceleration = SIMD3<Float>.zero
+        if motionInput != nil, let window = view.window {
+            windowAcceleration = windowMotion.sample(
+                position: SIMD2(Double(window.frame.origin.x), Double(window.frame.origin.y)),
+                radius: Double(min(view.bounds.width, view.bounds.height)) * 0.445,
+                window: window.windowNumber, at: now)
+        }
+        sampleMotion(at: now, windowAcceleration: windowAcceleration)
+        #else
+        sampleMotion(at: now)
+        #endif
         accumulator += elapsed
         var steps = 0
         while accumulator >= Double(Self.fixedStep) && steps < 8 {

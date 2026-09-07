@@ -23,6 +23,8 @@ struct Uniforms {
     float4 connection; // eased connection/lift, requested connected state, transparent background, reserved
     float4 optics; // glass strength, glass opacity, live backdrop available, reserved
     float4 backdropUV; // viewport origin and size in normalized backdrop coordinates
+    float4 inertia; // opposite container acceleration in radii/s², decaying agitation
+    float4 gravity; // normalized down direction, physical input enabled
 };
 
 constant float TAU = 6.28318530718;
@@ -294,6 +296,74 @@ kernel void integrateParticles(device const Particle *source [[buffer(0)]],
     // Fullness and kinetic energy are independent. Idle uses a cloud shaped
     // like the former 40% state, advancing on a much slower flow clock.
     float realDT = u.timing.y;
+    if (u.connection.y < 0.5 && u.gravity.w > 0.5) {
+        float3 up = -u.gravity.xyz;
+        float layer = hash(float(id)+4027.0)*(1.0-smoothstep(0.10,0.70,u.connection.x));
+        float height = dot(p.position.xyz,up);
+        float3 horizontal = p.position.xyz-up*height;
+        float bed = settledHeight(float2(length(horizontal),0),layer);
+        // Sleep is exact until force or a changed gravity direction disturbs the bed.
+        bool disturbed = length(u.inertia.xyz) > 0.08 || abs(height-bed) > 0.012;
+        if (p.appearance.w < -50.0 && !disturbed) {
+            p.velocity = float4(0);
+            p.appearance.y *= exp(-realDT*3.0);
+            destination[id] = p;
+            history[u.counts.w*u.counts.x+id] = p.position;
+            return;
+        }
+        p.appearance.w = 0;
+        float rate = max(0.05,u.motion.y);
+        float3 velocity = p.velocity.xyz*rate;
+        bool grounded = height <= bed+0.006;
+        float agitation = u.inertia.w;
+        // Retain the seeded pile, but loosen its attraction and friction during
+        // a shake. Contact against the curved bed converts sideways momentum
+        // into an upward tumble instead of pinning grains to a horizontal plane.
+        float3 right = normalize(cross(up,abs(up.z) < 0.9 ? float3(0,0,1) : float3(1,0,0)));
+        float3 depth = cross(right,up);
+        float3 rest = settledPosition(id);
+        float3 targetHorizontal = right*rest.x+depth*rest.z;
+        float pull = mix(grounded ? 12.0 : 2.0,grounded ? 0.6 : 0.1,agitation);
+        velocity += ((targetHorizontal-horizontal)*pull + u.gravity.xyz*2.4 + u.inertia.xyz)*realDT;
+        float drag = mix(grounded ? 7.0 : 1.5,grounded ? 0.8 : 0.35,agitation);
+        velocity *= exp(-drag*realDT);
+        velocity *= min(1.0,4.0/max(0.001,length(velocity)));
+        p.position.xyz += velocity*realDT;
+        float radius = length(p.position.xyz);
+        if (radius > 0.94) {
+            float3 normal = p.position.xyz/radius;
+            p.position.xyz = normal*0.94;
+            float impact = max(0.0,dot(velocity,normal));
+            // A firm hit rebounds even after the shake ends. Fade out rebound
+            // for gentle contact so settled snow does not chatter against glass.
+            float bounce = (0.24+0.18*agitation)*smoothstep(0.08,0.5,impact);
+            velocity -= normal*impact*(1.0+bounce);
+        }
+        height = dot(p.position.xyz,up);
+        horizontal = p.position.xyz-up*height;
+        float bottom = sqrt(max(0.0001,0.94*0.94-dot(horizontal,horizontal)));
+        bed = -bottom+layer*max(0.0,bottom-0.74);
+        if (height < bed) {
+            p.position.xyz += up*(bed-height);
+            float slope = bottom > 0.74 ? 1.0-layer : 1.0;
+            float3 normal = normalize(up-horizontal*(slope/bottom));
+            float impact = max(0.0,-dot(velocity,normal));
+            float bounce = (0.20+0.18*agitation)*smoothstep(0.08,0.5,impact);
+            velocity += normal*impact*(1.0+bounce);
+        }
+        radius = length(p.position.xyz);
+        if (radius > 0.94) { p.position.xyz *= 0.94/radius; }
+        if (u.connection.x < 0.02 && agitation < 0.015 && !disturbed
+            && length(velocity) < 0.035) {
+            p.appearance.w = -100.0;
+            velocity = float3(0);
+        }
+        p.velocity = float4(velocity/rate,p.velocity.w*exp(-realDT*8.0));
+        p.appearance.y *= exp(-realDT*3.0);
+        destination[id] = p;
+        history[u.counts.w*u.counts.x+id] = p.position;
+        return;
+    }
     if (u.connection.y < 0.5) {
         // Gravity replaces the currents. Preserve admission so every particle
         // that was visible at disconnect reaches the bed instead of fading out.
@@ -470,6 +540,9 @@ kernel void integrateParticles(device const Particle *source [[buffer(0)]],
     // currents take over. Keep the current positions and trail history intact.
     float rate = max(0.05,u.motion.y);
     acceleration.y += 3.5*(1.0-u.connection.x)/(rate*rate);
+    // AI currents remain dominant. Physical force is in real time, independent
+    // of the animation clock, and is applied after speech/current blending.
+    acceleration += u.inertia.xyz*mix(0.30,0.18,u.timing.z)/(rate*rate);
     float3 wallNormal = p.position.xyz/max(0.001,distanceBefore);
     float wallPressure = smoothstep(0.87,0.94,distanceBefore);
     acceleration -= wallNormal*wallPressure

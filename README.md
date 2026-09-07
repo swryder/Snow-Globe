@@ -114,9 +114,27 @@ All presentation defaults are defined by **`SnowGlobeConfiguration.default`**. T
 | `transparentBackground` | **`false`** | Clear outside the sphere for overlays |
 | `glassEffect` | **45%** | `0...1`; optical distortion and grazing reflections, strongest near the rim; zero restores the original image |
 | `opacity` | **100%** | `0...1`; glass body opacity only; zero is clear glass with visible particles |
+| `motionSensitivity` | **100%** | `0...2`; physical movement gain when a `GlobeMotion` input is supplied; zero disables it |
 | Container | **Sphere** | Fixed; the discarded depth/flattening control is not exposed |
 
 Idle uses only part of the particle budget; **10,000 is the full-effort limit**, not a guarantee of 10,000 visible particles at rest. The full simulation capacity remains allocated regardless of the budget slider.
+
+## Physical movement
+
+The macOS test harness enables particle inertia. Drag the floating globe, or drag the containing window when embedded, to stir the snow. Starting, stopping, and changing direction apply force; cruising at a constant speed does not keep adding force. **Motion sensitivity** controls the strength and **Shake globe** supplies a repeatable shake without moving the window. Disconnected snow wakes, tumbles against the curved glass, then settles and sleeps again. Connected AI currents resist the same movement, leaving a lighter physical influence.
+
+Other consumers opt in with a persistent input:
+
+```swift
+@State private var motion = GlobeMotion()
+
+// Inside body:
+SnowGlobeView(isConnected: connected, motion: motion)
+```
+
+Passing `motion` enables automatic macOS window tracking. Leaving it `nil` preserves the existing animation. Keep a separate instance for each independently moving globe. Window changes, significant resizing, long pauses, and large position jumps reset the acceleration filter to avoid artificial jolts. This adds no screen capture work.
+
+The shared input also accepts `motion.update(acceleration:gravity:)` for a future iPhone motion adapter. Coordinates are x right, y up, z toward the viewer. Acceleration excludes gravity and is expressed in globe radii per second squared; gravity is a direction. Acceleration expires after 250 ms without updates, while gravity remains until `reset()`. A device adapter must convert sensor coordinates for the current screen orientation and stop/reset input when inactive. **The iPhone sensor adapter is not wired up in this harness change.**
 
 The `*Range` static properties on `SnowGlobeConfiguration` expose supported tuning ranges. Out-of-range inputs are clamped when delivered to the renderer. Non-finite scalar settings fall back to defaults; a non-finite activity value becomes idle. Mutating a configuration does not immediately clamp its stored public values.
 
