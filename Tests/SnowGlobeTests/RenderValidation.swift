@@ -2,6 +2,7 @@
 @testable import SnowGlobe
 import AppKit
 import Metal
+import CoreVideo
 import simd
 
 /// Run the exact production kernels offscreen for reproducible visual inspection
@@ -25,7 +26,7 @@ enum RenderValidation {
 
     static func run(directory: String, speechAudioURL: URL) throws {
         try require(MemoryLayout<Particle>.stride == 64, "Particle CPU/GPU layout mismatch")
-        try require(MemoryLayout<Uniforms>.stride == 176, "Uniform CPU/GPU layout mismatch")
+        try require(MemoryLayout<Uniforms>.stride == 208, "Uniform CPU/GPU layout mismatch")
         let output = URL(fileURLWithPath: directory, isDirectory: true)
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         // Keep established visual regressions at their reference settings.
@@ -999,6 +1000,205 @@ enum RenderValidation {
         print("PASS: finite simulation, confinement, wisps, wall gliding, five currents, collisions, EDR, smooth settling, resize, energy-driven Disc release and recovery, density range, size coverage, sustained idle glass contact, two perpendicular opposing midpoint currents, adjustable idle movement, crowded collisions, curved trail history, trail-length coverage, exact off rendering, 10–33,600 particle budgets, 20× size, and effort-driven sparkle")
     }
 
+    /// Validate the actual composited GPU output, including large particle halos
+    /// at the glass edge and rectangular drawables in both appearances.
+    static func checkTransparency(in output: URL) throws {
+        try FileManager.default.createDirectory(at: output,withIntermediateDirectories: true)
+        for dark: Float in [0,1] {
+            let renderer = try ParticleRenderer(initialDark: dark,initialSize: 20,initialTrailLength: 1)
+            let width = 320, height = 240
+            let opaque = try snapshot(renderer,url: output.appendingPathComponent("opaque-\(dark).png"),width: width,height: height)
+            renderer.transparentBackground = true
+            let clear = try snapshot(renderer,url: output.appendingPathComponent("clear-\(dark).png"),width: width,height: height)
+            var edgePixels = 0
+            for y in 0..<height {
+                for x in 0..<width {
+                    let offset = (y*width+x)*4
+                    let radius = hypot(Float(x)+0.5-Float(width)/2,Float(y)+0.5-Float(height)/2)/(Float(height)*0.445)
+                    try require(opaque.pixels[offset+3] == 255,"Embedded globe must remain opaque")
+                    if radius > 1.01 {
+                        try require(clear.pixels[offset..<offset+4].allSatisfy { $0 == 0 },"Floating globe leaked color/alpha outside its circular boundary")
+                    } else if radius < 0.99 {
+                        try require(clear.pixels[offset..<offset+4] == opaque.pixels[offset..<offset+4],"Transparency changed the globe interior")
+                    }
+                    if clear.pixels[offset+3] > 0 && clear.pixels[offset+3] < 255 { edgePixels += 1 }
+                }
+            }
+            try require(edgePixels > 0,"Floating globe needs an antialiased edge")
+            renderer.transparentBackground = false
+            let restored = try snapshot(renderer,url: output.appendingPathComponent("restored-\(dark).png"),width: width,height: height)
+            try require(restored.pixels == opaque.pixels,"Returning to embedded rendering changed the frame")
+        }
+    }
+
+    static func checkGlass(in output: URL) throws {
+        try FileManager.default.createDirectory(at: output,withIntermediateDirectories: true)
+        let width = 600, height = 600
+        func changedInBand(_ a: RenderMetrics, _ b: RenderMetrics, low: Float, high: Float) -> Double {
+            var changed = 0, total = 0
+            for y in 0..<height { for x in 0..<width {
+                let r = hypot(Float(x)+0.5-Float(width)/2,Float(y)+0.5-Float(height)/2)/(Float(height)*0.445)
+                guard r >= low && r < high else { continue }
+                total += 1
+                let i = (y*width+x)*4
+                let difference = (0..<3).reduce(0) { $0+abs(Int(a.pixels[i+$1])-Int(b.pixels[i+$1])) }
+                if difference > 8 { changed += 1 }
+            } }
+            return Double(changed)/Double(max(1,total))
+        }
+        for dark: Float in [0,1] {
+            let renderer = try ParticleRenderer(initialDark: dark)
+            renderer.transparentBackground = true
+            let off = try snapshot(renderer,url: output.appendingPathComponent("particles-\(dark)-off.png"),width: width,height: height,glassEffect: 0)
+            let half = try snapshot(renderer,url: output.appendingPathComponent("particles-\(dark)-half.png"),width: width,height: height,glassEffect: 0.5)
+            let full = try snapshot(renderer,url: output.appendingPathComponent("particles-\(dark)-full.png"),width: width,height: height,glassEffect: 1)
+            let center = changedInBand(off,full,low: 0,high: 0.22)
+            let edge = changedInBand(off,full,low: 0.72,high: 0.98)
+            print("Glass appearance \(dark): center changed \(center), edge changed \(edge)")
+            try require(edge > 0.10 && edge > center*2,"Glass refraction must be strongest at the edge")
+            try require(half.changedPixels(from: off) > 100,"Midpoint glass setting has no optical effect")
+            try require(full.changedPixels(from: half) > 100,"Glass strength does not change the optical effect")
+            try require(full.pixels[0..<4].allSatisfy { $0 == 0 },"Glass optics leaked outside the globe")
+            let restored = try snapshot(renderer,url: output.appendingPathComponent("particles-\(dark)-restored.png"),width: width,height: height,glassEffect: 0)
+            try require(restored.pixels == off.pixels,"Glass Off must restore the original rendering")
+        }
+        // A synthetic desktop provides reproducible, permission-free validation
+        // of pixel-buffer import, orientation, viewport motion, and refraction.
+        var buffer: CVPixelBuffer?
+        let attributes: [String: Any] = [kCVPixelBufferMetalCompatibilityKey as String: true,
+                                         kCVPixelBufferIOSurfacePropertiesKey as String: [:]]
+        try require(CVPixelBufferCreate(nil,width,height,kCVPixelFormatType_32BGRA,attributes as CFDictionary,&buffer) == kCVReturnSuccess,"Could not create test backdrop")
+        let desktop = buffer!
+        CVPixelBufferLockBaseAddress(desktop,[])
+        let bytes = CVPixelBufferGetBaseAddress(desktop)!.assumingMemoryBound(to: UInt8.self)
+        let row = CVPixelBufferGetBytesPerRow(desktop)
+        for y in 0..<height { for x in 0..<width {
+            let i = y*row+x*4
+            let line = x%30 < 3 || y%30 < 3
+            bytes[i] = line ? 35 : UInt8(70+y*170/height)
+            bytes[i+1] = line ? 35 : UInt8(70+x*150/width)
+            bytes[i+2] = line ? 35 : 230
+            bytes[i+3] = 255
+        } }
+        CVPixelBufferUnlockBaseAddress(desktop,[])
+        let mailbox = GlassBackdrop()
+        mailbox.store(desktop)
+        let renderer = try ParticleRenderer(initialDark: 1,initialDensity: ParticleRenderer.minimumDensity)
+        renderer.transparentBackground = true
+        renderer.glassBackdrop = mailbox
+        renderer.opacity = 0.5
+        let nearOff = try snapshot(renderer,url: output.appendingPathComponent("desktop-near-off.png"),width: width,height: height,glassEffect: 0.0002)
+        let lensed = try snapshot(renderer,url: output.appendingPathComponent("desktop-lensed.png"),width: width,height: height,glassEffect: 1)
+        try require(changedInBand(nearOff,lensed,low: 0.72,high: 0.98) > 0.25,"Live backdrop was not refracted")
+        // The grid's warped positions must stay fixed as transparency reveals it.
+        // Comparing contrast rather than brightness isolates lens geometry from opacity.
+        renderer.opacity = 0.1
+        let clearLens = try snapshot(renderer,url: output.appendingPathComponent("desktop-90-percent-transparent.png"),width: width,height: height,glassEffect: 1)
+        var count = 0.0, sumA = 0.0, sumB = 0.0, sumAA = 0.0, sumBB = 0.0, sumAB = 0.0
+        for y in 0..<height { for x in 0..<width {
+            let r = hypot(Float(x)+0.5-Float(width)/2,Float(y)+0.5-Float(height)/2)/(Float(height)*0.445)
+            guard r > 0.72 && r < 0.98 else { continue }
+            let i = (y*width+x)*4
+            let a = Double(lensed.pixels[i]), b = Double(clearLens.pixels[i])
+            count += 1; sumA += a; sumB += b
+            sumAA += a*a; sumBB += b*b; sumAB += a*b
+        } }
+        let correlation = (count*sumAB-sumA*sumB)/sqrt((count*sumAA-sumA*sumA)*(count*sumBB-sumB*sumB))
+        print("Desktop lens geometry correlation at 50% and 90% transparency: \(correlation)")
+        try require(correlation > 0.97,"Transparency must reveal desktop refraction without weakening its geometry")
+        renderer.opacity = 0
+        let fullyClear = try snapshot(renderer,url: output.appendingPathComponent("desktop-clear-glass.png"),width: width,height: height,glassEffect: 1)
+        let clearUnlensed = try snapshot(renderer,url: output.appendingPathComponent("desktop-clear-unlensed.png"),width: width,height: height,glassEffect: 0.0002)
+        try require(changedInBand(clearUnlensed,fullyClear,low: 0.72,high: 0.98) > 0.25,"Fully clear glass must retain desktop refraction")
+        renderer.opacity = 0.5
+        let middle = ((height/2)*width+width/2)*4
+        let top = ((height/4+12)*width+width/2+12)*4
+        let bottom = ((height*3/4+12)*width+width/2+12)*4
+        try require(lensed.pixels[middle+3] == 255,"Captured refraction must replace the underlying image without double exposure")
+        try require(nearOff.pixels[bottom+2] > nearOff.pixels[top+2],"Backdrop was vertically flipped")
+        mailbox.updateViewport(CGRect(x: 0.1,y: 0.1,width: 0.6,height: 0.6))
+        let moved = try snapshot(renderer,url: output.appendingPathComponent("desktop-moved.png"),width: width,height: height,glassEffect: 1)
+        try require(moved.changedPixels(from: lensed) > 1000,"Backdrop coordinates did not follow the moving globe")
+        mailbox.clear()
+        let unavailable = try snapshot(renderer,url: output.appendingPathComponent("desktop-unavailable.png"),width: width,height: height,glassEffect: 1)
+        try require(abs(Int(unavailable.pixels[middle+3])-128) <= 1,"Capture loss must restore native transparency")
+        renderer.opacity = 0
+        let clearSnow = try snapshot(renderer,url: output.appendingPathComponent("clear-glass-no-capture.png"),width: width,height: height,glassEffect: 1)
+        try require(clearSnow.peak > 0.01,"Fully clear glass must leave particles visible after capture loss")
+        try require(clearSnow.pixels[middle+3] == 0,"Clear glass must reveal the native desktop between particles after capture loss")
+    }
+
+    /// Compare the same stationary particle/trail image over several glass
+    /// backgrounds. Its premultiplied color and coverage must never be faded
+    /// by the glass slider, including HDR emission and capture-loss fallback.
+    static func checkGlassOpacity(in output: URL) throws {
+        try FileManager.default.createDirectory(at: output,withIntermediateDirectories: true)
+        let width = 320, height = 240
+        var pixelBuffer: CVPixelBuffer?
+        let attributes = [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary
+        try require(CVPixelBufferCreate(nil,width,height,kCVPixelFormatType_32BGRA,attributes,&pixelBuffer) == kCVReturnSuccess,"Could not create opacity test backdrop")
+        let desktop = pixelBuffer!
+        CVPixelBufferLockBaseAddress(desktop,[])
+        let bytes = CVPixelBufferGetBaseAddress(desktop)!.assumingMemoryBound(to: UInt8.self)
+        let row = CVPixelBufferGetBytesPerRow(desktop)
+        for y in 0..<height { for x in 0..<width {
+            let i = y*row+x*4
+            bytes[i] = 80; bytes[i+1] = 130; bytes[i+2] = 200; bytes[i+3] = 255
+        } }
+        CVPixelBufferUnlockBaseAddress(desktop,[])
+        let mailbox = GlassBackdrop()
+        mailbox.store(desktop)
+        for dark: Float in [0,1] {
+            let renderer = try ParticleRenderer(initialDark: dark,initialSize: 4,initialTrailLength: 1)
+            renderer.transparentBackground = true
+            let particles = renderer.particles.contents().bindMemory(to: Particle.self,capacity: ParticleRenderer.particleCount)
+            let visibility = (0..<ParticleRenderer.particleCount).map { particles[$0].position.w }
+            func setSnowVisible(_ visible: Bool) {
+                for id in 0..<ParticleRenderer.particleCount { particles[id].position.w = visible ? visibility[id] : 0 }
+            }
+            func frame(_ name: String, glass: Float, trail: Float = 1) throws -> RenderMetrics {
+                try snapshot(renderer,url: output.appendingPathComponent("\(dark)-\(glass)-\(name).png"),width: width,height: height,trailLength: trail,glassEffect: glass,retainLinearPixels: true)
+            }
+            for strength: Float in [0,1] {
+                renderer.opacity = 0
+                renderer.glassBackdrop = nil
+                let snow = try frame("snow",glass: strength)
+                let heads = try frame("heads",glass: strength,trail: 0)
+                let reference = snow.linearPixels!
+                try require(snow.peak > 0.1,"Clear glass faded particle brightness")
+                try require(reference.enumerated().filter { $0.offset%4 == 3 && $0.element > 0.05 }.count > 100,"Clear glass erased particle coverage")
+                try require(snow.changedPixels(from: heads) > 100,"Clear glass erased particle trails")
+                for captured in [false,true] {
+                    renderer.glassBackdrop = captured ? mailbox : nil
+                    for opacity: Float in [0,0.5,1] {
+                        renderer.opacity = opacity
+                        let name = "\(captured)-\(opacity)"
+                        setSnowVisible(false)
+                        let background = try frame("glass-\(name)",glass: strength).linearPixels!
+                        setSnowVisible(true)
+                        let combined = try frame("combined-\(name)",glass: strength).linearPixels!
+                        var maxError: Float = 0
+                        // Stay inside the AA fringe: it has separately filtered coverage.
+                        for y in 0..<height { for x in 0..<width {
+                            guard hypot(Float(x)+0.5-Float(width)/2,Float(y)+0.5-Float(height)/2) < Float(height)*0.445*0.98 else { continue }
+                            let i = (y*width+x)*4
+                            for channel in 0..<4 {
+                                let expected = reference[i+channel]+background[i+channel]*(1-reference[i+3])
+                                maxError = max(maxError,abs(combined[i+channel]-expected))
+                            }
+                        } }
+                        // The original fully opaque, optics-off pass blends each
+                        // translucent particle into a half-float background. Its
+                        // accumulated rounding differs from the isolated layer.
+                        let tolerance: Float = strength == 0 && opacity == 1 ? 0.05 : 0.006
+                        try require(maxError < tolerance,"Glass opacity \(opacity) changed particle/trail color or coverage (dark=\(dark), refraction=\(strength), capture=\(captured), error=\(maxError))")
+                    }
+                }
+            }
+        }
+        print("PASS: Glass transparency preserves particle/trail brightness and coverage in both appearances, with refraction on/off and capture present/absent")
+    }
+
     private struct RenderMetrics {
         let peak: Float
         let coloredPixels: Int
@@ -1006,6 +1206,7 @@ enum RenderValidation {
         let vividPixels: Int
         let pixelHash: Int
         let pixels: Data
+        let linearPixels: [Float]?
 
         func changedPixels(from baseline: RenderMetrics) -> Int {
             pixels.withUnsafeBytes { (current: UnsafeRawBufferPointer) in
@@ -1023,7 +1224,7 @@ enum RenderValidation {
         }
     }
 
-    private static func snapshot(_ renderer: ParticleRenderer, url: URL, width: Int, height: Int, trailLength: Float? = nil, sparkleLevel: Float? = nil, flashFactor: Float? = nil) throws -> RenderMetrics {
+    private static func snapshot(_ renderer: ParticleRenderer, url: URL, width: Int, height: Int, trailLength: Float? = nil, sparkleLevel: Float? = nil, flashFactor: Float? = nil, glassEffect: Float? = nil, retainLinearPixels: Bool = false) throws -> RenderMetrics {
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba16Float, width: width, height: height, mipmapped: false)
         descriptor.storageMode = .shared
         descriptor.usage = [.renderTarget, .shaderRead]
@@ -1031,7 +1232,7 @@ enum RenderValidation {
               let command = renderer.queue.makeCommandBuffer() else {
             throw RendererFailure.unavailable("Could not allocate validation render target")
         }
-        renderer.render(command: command, texture: texture, scale: 2, edr: 4, trailOverride: trailLength, sparkleOverride: sparkleLevel, flashOverride: flashFactor)
+        renderer.render(command: command, texture: texture, scale: 2, edr: 4, trailOverride: trailLength, sparkleOverride: sparkleLevel, flashOverride: flashFactor,glassOverride: glassEffect)
         command.commit()
         command.waitUntilCompleted()
         if let error = command.error { throw error }
@@ -1045,6 +1246,9 @@ enum RenderValidation {
         var brightNeutralPixels = 0
         var vividPixels = 0
         for pixel in 0..<width*height {
+            let alpha = floatFromHalf(halfPixels[pixel*4+3])
+            try require(alpha.isFinite && alpha >= 0 && alpha <= 1.001,"Invalid rendered alpha")
+            pixels[pixel*4+3] = UInt8(min(255,max(0,(alpha*255).rounded())))
             let rgb = (0..<3).map { floatFromHalf(halfPixels[pixel*4+$0]) }
             if rgb.min()! < rgb.max()!*0.65 { coloredPixels += 1 }
             if rgb.min()! > 0.90 { brightNeutralPixels += 1 }
@@ -1053,7 +1257,7 @@ enum RenderValidation {
                 let linear = floatFromHalf(halfPixels[pixel*4+channel])
                 try require(linear.isFinite, "Non-finite rendered pixel")
                 peak = max(peak,linear)
-                let bounded = min(1,max(0,linear))
+                let bounded = min(1,max(0,alpha > 0 ? linear/alpha : 0))
                 let encoded = bounded <= 0.0031308 ? bounded*12.92 : 1.055*pow(bounded,1/2.4)-0.055
                 pixels[pixel*4+channel] = UInt8(min(255,max(0,encoded*255)))
             }
@@ -1066,7 +1270,7 @@ enum RenderValidation {
                             provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
         let bitmap = NSBitmapImageRep(cgImage: image)
         try bitmap.representation(using: .png, properties: [:])!.write(to: url)
-        return RenderMetrics(peak: peak, coloredPixels: coloredPixels, brightNeutralPixels: brightNeutralPixels, vividPixels: vividPixels, pixelHash: data.hashValue, pixels: data)
+        return RenderMetrics(peak: peak, coloredPixels: coloredPixels, brightNeutralPixels: brightNeutralPixels, vividPixels: vividPixels, pixelHash: data.hashValue, pixels: data,linearPixels: retainLinearPixels ? halfPixels.map(floatFromHalf) : nil)
     }
 }
 

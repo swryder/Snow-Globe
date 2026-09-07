@@ -15,6 +15,9 @@ final class SnowGlobeTests: XCTestCase {
         XCTAssertEqual(value.speechExpression, 1)
         XCTAssertEqual(value.flashFactor, 3)
         XCTAssertEqual(value.appearance, .dark)
+        XCTAssertFalse(value.transparentBackground)
+        XCTAssertEqual(value.glassEffect,0.45)
+        XCTAssertEqual(value.opacity,1)
         var invalid = value
         invalid.particleCount = Int.max
         invalid.particleSize = .nan
@@ -23,6 +26,8 @@ final class SnowGlobeTests: XCTestCase {
         invalid.speakingTrailLength = 10
         invalid.flashFactor = .infinity
         invalid.speechExpression = 3
+        invalid.glassEffect = .nan
+        invalid.opacity = 2
         let safe = invalid.normalized
         XCTAssertEqual(safe.particleCount, 33_600)
         XCTAssertEqual(safe.particleSize, value.particleSize)
@@ -31,6 +36,8 @@ final class SnowGlobeTests: XCTestCase {
         XCTAssertEqual(safe.speakingTrailLength, 1)
         XCTAssertEqual(safe.flashFactor, value.flashFactor)
         XCTAssertEqual(safe.speechExpression, 2)
+        XCTAssertEqual(safe.glassEffect,value.glassEffect)
+        XCTAssertEqual(safe.opacity,1)
         invalid.particleCount = Int.min
         XCTAssertEqual(invalid.normalized.particleCount, 10)
     }
@@ -60,6 +67,28 @@ final class SnowGlobeTests: XCTestCase {
     }
 
     #if os(macOS)
+    func testGlassRefraction() throws {
+        guard MTLCreateSystemDefaultDevice() != nil else { throw XCTSkip("Metal GPU required for render validation") }
+        let output = ProcessInfo.processInfo.environment["SNOW_GLOBE_GLASS_OUTPUT"] ??
+            FileManager.default.temporaryDirectory.appendingPathComponent("SnowGlobeGlass-\(UUID().uuidString)").path
+        print("Glass refraction previews: \(output)")
+        try RenderValidation.checkGlass(in: URL(fileURLWithPath: output))
+    }
+
+    func testTransparentGlobeCompositing() throws {
+        guard MTLCreateSystemDefaultDevice() != nil else { throw XCTSkip("Metal GPU required for render validation") }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("SnowGlobeAlpha-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try RenderValidation.checkTransparency(in: directory)
+    }
+
+    func testGlassTransparencyPreservesParticles() throws {
+        guard MTLCreateSystemDefaultDevice() != nil else { throw XCTSkip("Metal GPU required for render validation") }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("SnowGlobeGlassOpacity-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try RenderValidation.checkGlassOpacity(in: directory)
+    }
+
     func testProductionMetalRegression() throws {
         guard MTLCreateSystemDefaultDevice() != nil else { throw XCTSkip("Metal GPU required for render validation") }
         let directory = ProcessInfo.processInfo.environment["SNOW_GLOBE_VALIDATION_OUTPUT"] ??

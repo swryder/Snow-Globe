@@ -12,10 +12,9 @@ enum SnowGlobeApp {
     }
 }
 
-/// This document-free sample always has exactly one window. Explicit ownership
-/// avoids restoring an empty scene after the previous preview was closed.
+/// Own the controls window explicitly; the globe can move into a separate panel.
 @MainActor
-final class SnowGlobeWindowController: NSObject, NSApplicationDelegate {
+final class SnowGlobeWindowController: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var window: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -57,12 +56,18 @@ final class SnowGlobeWindowController: NSObject, NSApplicationDelegate {
 
     private func showWindow() {
         if window == nil {
-            let window = NSWindow(contentViewController: NSHostingController(rootView: ContentView()))
+            let content = NSHostingController(rootView: ContentView())
+            // Window sizes are managed explicitly when the globe detaches.
+            // Avoid an asynchronous SwiftUI size proposal overriding restoration.
+            content.sizingOptions = [.minSize]
+            let window = NSWindow(contentViewController: content)
             window.title = "Snow Globe"
+            window.identifier = NSUserInterfaceItemIdentifier("snow-globe-controls")
+            window.delegate = self
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-            window.contentMinSize = NSSize(width: 540, height: 620)
+            window.contentMinSize = NSSize(width: 540, height: 730)
             window.setContentSize(NSSize(width: 1000, height: 868))
             window.appearance = NSAppearance(named: CommandLine.arguments.contains("--light") ? .aqua : .darkAqua)
             window.isReleasedWhenClosed = false
@@ -77,6 +82,11 @@ final class SnowGlobeWindowController: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showWindow()
         return true
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        // A borderless globe must never strand the app without its controls.
+        NSApp.terminate(nil)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -97,7 +107,10 @@ struct ContentView: View {
     @State private var liveWaveform = SnowGlobeConfiguration.default.speechMode == .live
     @State private var flashFactor: Double = Double(SnowGlobeConfiguration.default.flashFactor)
     @State private var editingSpeech = false
-    @State private var rendererError: String?
+    @State private var floating = false
+    @State private var transparency: Double = 0.25
+    @State private var glassEffect = Double(SnowGlobeConfiguration.default.glassEffect)
+    @StateObject private var desktopGlass = DesktopGlassCapture()
 
     init() {
         let args = CommandLine.arguments
@@ -116,6 +129,15 @@ struct ContentView: View {
         if args.contains("--light") { _dark = State(initialValue: false) }
         if args.contains("--ring") { _disc = State(initialValue: false) }
         if args.contains("--flowing-waveform") { _liveWaveform = State(initialValue: false) }
+        _floating = State(initialValue: args.contains("--floating"))
+        if let index = args.firstIndex(of: "--glass-effect"), args.count > index+1,
+           let value = Double(args[index+1]), value.isFinite {
+            _glassEffect = State(initialValue: min(1,max(0,value)))
+        }
+        if let index = args.firstIndex(of: "--transparency"), args.count > index+1,
+           let value = Double(args[index+1]), value.isFinite {
+            _transparency = State(initialValue: min(1,max(0,value)))
+        }
         _connected = State(initialValue: !args.contains("--disconnected"))
     }
 
@@ -126,7 +148,9 @@ struct ContentView: View {
                                particleSize: Float(particleSize), idleSpeed: Float(idleSpeed),
                                trailLength: Float(trailLength), speakingTrailLength: Float(speakingTrailLength),
                                speechExpression: Float(speechExpression),
-                               speechMode: liveWaveform ? .live : .flowing, flashFactor: Float(flashFactor))
+                               speechMode: liveWaveform ? .live : .flowing, flashFactor: Float(flashFactor),
+                               transparentBackground: floating,glassEffect: Float(glassEffect),
+                               opacity: floating ? Float(1-transparency) : 1)
     }
 
     private var foreground: Color { dark ? Color(white: 0.92) : Color(white: 0.16) }
@@ -145,7 +169,7 @@ struct ContentView: View {
     private func tuningSlider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, readout: String) -> some View {
         VStack(spacing: 7) {
             HStack {
-                Text(title).foregroundStyle(secondary)
+                Text(title).foregroundStyle(secondary).lineLimit(1).minimumScaleFactor(0.8)
                 Spacer()
                 Text(readout).monospacedDigit().foregroundStyle(foreground.opacity(0.8))
             }
@@ -196,21 +220,60 @@ struct ContentView: View {
                 }
                 .padding(.horizontal, 36).padding(.top, 33)
 
-                ZStack {
-                    SnowGlobeView(activity: Float(activity), isConnected: connected,
-                                  configuration: globeConfiguration, speechMeter: speech.meter,
-                                  onError: { rendererError = $0.localizedDescription })
-                    if let rendererError {
-                        ContentUnavailableView("Metal renderer unavailable",
-                                               systemImage: "exclamationmark.triangle",
-                                               description: Text(rendererError))
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .accessibilityLabel("Animated particle snow globe")
-                .accessibilityValue(stage)
+                GlobeSurface(globe: SnowGlobeView(activity: Float(activity), isConnected: connected,
+                                                   configuration: globeConfiguration, speechMeter: speech.meter,
+                                                   glassBackdrop: desktopGlass.backdrop),
+                             isFloating: floating,
+                             glassEffect: glassEffect,capture: desktopGlass)
+                    .frame(maxWidth: .infinity, maxHeight: floating ? 0 : .infinity)
+                    .frame(height: floating ? 0 : nil)
+                    .accessibilityLabel("Animated particle snow globe")
+                    .accessibilityValue(stage)
 
                 VStack(spacing: 15) {
+                    HStack {
+                        Toggle("Free-floating globe", isOn: $floating)
+                            .toggleStyle(.switch).controlSize(.small)
+                            .font(.system(size: 12, weight: .medium))
+                            .help("Move the globe into a borderless desktop overlay and keep this window for controls.")
+                        Spacer()
+                    }
+                    tuningSlider("Glass effect",value: $glassEffect,range: 0...1,
+                                 readout: glassEffect < 0.005 ? "Off" : "\(Int((glassEffect*100).rounded()))%")
+                        .accessibilityLabel("Glass effect")
+                        .help("Bend particles, trails, and the desktop through curved glass. Desktop refraction needs Screen Recording access. The strongest lensing is near the edge.")
+                    if floating {
+                        VStack(alignment: .leading, spacing: 7) {
+                            HStack {
+                                Text("Glass transparency")
+                                Spacer()
+                                Text("\(Int((transparency*100).rounded()))% transparent").monospacedDigit()
+                            }
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(secondary)
+                            Slider(value: $transparency, in: 0...1)
+                                .accessibilityLabel("Glass transparency")
+                                .accessibilityValue("\(Int((transparency*100).rounded())) percent transparent")
+                                .help("Adjust the glass tint from solid to clear. Particles and trails stay fully visible, and Glass effect controls refraction independently.")
+                            Text("Drag the globe to move it. Turn off Free-floating globe to bring it back.")
+                                .font(.system(size: 10)).foregroundStyle(secondary)
+                        }
+                        if glassEffect > 0.0001 {
+                            HStack(spacing: 12) {
+                                Text(desktopGlass.message)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(desktopGlass.needsAction ? foreground.opacity(0.85) : secondary)
+                                    .fixedSize(horizontal: false,vertical: true)
+                                Spacer(minLength: 0)
+                                if desktopGlass.needsAction {
+                                    Button(desktopGlass.state == .permissionNeeded ? "Enable desktop refraction" : "Retry") { desktopGlass.enable() }
+                                        .controlSize(.small)
+                                        .help("Allow Snow Globe to read screen pixels for live refraction. Nothing is recorded or sent anywhere.")
+                                }
+                            }
+                        }
+                    }
+                    Divider().overlay(foreground.opacity(0.05))
                     HStack {
                         Button {
                             connected.toggle()
@@ -356,33 +419,41 @@ struct ContentView: View {
                 .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(foreground.opacity(0.07)))
                 .frame(maxWidth: 560)
                 .padding(.horizontal, 36)
+                .padding(.top, floating ? 24 : 0)
                 .padding(.bottom, 30)
             }
         }
-        .frame(minWidth: 540, minHeight: 620)
+        .frame(minWidth: 540, minHeight: floating ? 680 : 730)
         .preferredColorScheme(dark ? .dark : .light)
         .onChange(of: dark) { _, value in
-            NSApp.windows.first(where: { $0.title == "Snow Globe" })?.appearance = NSAppearance(named: value ? .darkAqua : .aqua)
+            NSApp.windows.first(where: { $0.identifier?.rawValue == "snow-globe-controls" })?.appearance = NSAppearance(named: value ? .darkAqua : .aqua)
         }
+        .onChange(of: desktopGlass.state) { _, _ in writeWindowInfo() }
         .onAppear {
             // Optional local QA aid: identifies only this app's own window.
             let args = CommandLine.arguments
             if args.contains("--speech-demo") && connected {
                 DispatchQueue.main.asyncAfter(deadline: .now()+1.5) { if connected { speech.speak() } }
             }
-            if let index = args.firstIndex(of: "--window-info"), args.count > index+1 {
-                let path = args[index+1]
-                DispatchQueue.main.asyncAfter(deadline: .now()+1) {
-                    guard let window = NSApp.windows.first(where: { $0.title == "Snow Globe" }) else { return }
-                    let info: [String: Any] = ["windowNumber": window.windowNumber,
-                                               "width": window.frame.width, "height": window.frame.height,
-                                               "minWidth": window.contentMinSize.width,
-                                               "minHeight": window.contentMinSize.height]
-                    if let data = try? JSONSerialization.data(withJSONObject: info, options: .prettyPrinted) {
-                        try? data.write(to: URL(fileURLWithPath: path))
-                    }
-                }
-            }
+            DispatchQueue.main.asyncAfter(deadline: .now()+1) { writeWindowInfo() }
+        }
+    }
+
+    /// Opt-in local QA metadata; never writes captured screen pixels.
+    private func writeWindowInfo() {
+        let args = CommandLine.arguments
+        guard let index = args.firstIndex(of: "--window-info"), args.count > index+1,
+              let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "snow-globe-controls" }) else { return }
+        var info: [String: Any] = ["windowNumber": window.windowNumber,
+                                  "width": window.frame.width, "height": window.frame.height,
+                                  "minWidth": window.contentMinSize.width, "minHeight": window.contentMinSize.height,
+                                  "desktopRefraction": desktopGlass.message,
+                                  "screenAccess": CGPreflightScreenCaptureAccess()]
+        if let panel = NSApp.windows.first(where: { $0.identifier?.rawValue == "snow-globe-floating" }) {
+            info["floatingWindowNumber"] = panel.windowNumber
+        }
+        if let data = try? JSONSerialization.data(withJSONObject: info, options: .prettyPrinted) {
+            try? data.write(to: URL(fileURLWithPath: args[index+1]),options: .atomic)
         }
     }
 }

@@ -20,7 +20,9 @@ struct Uniforms {
     float4 speech; // audio envelope, syllable accent, speech time, ribbon presence
     float4 speechLight; // flash gain, fast loudness envelope, fast onset envelope, speech presence
     float4 speechMode; // live waveform blend, live history span, PCM data available, PCM sample count
-    float4 connection; // eased connection/lift, requested connected state, reserved, reserved
+    float4 connection; // eased connection/lift, requested connected state, transparent background, reserved
+    float4 optics; // glass strength, glass opacity, live backdrop available, reserved
+    float4 backdropUV; // viewport origin and size in normalized backdrop coordinates
 };
 
 constant float TAU = 6.28318530718;
@@ -569,8 +571,15 @@ float3 backgroundColor(float dark) {
     return mix(float3(0.869,0.880,0.901), float3(0.00163,0.00224,0.00385), dark);
 }
 
-fragment float4 globeFragment(ScreenVertex in [[stage_in]], constant Uniforms &u [[buffer(0)]]) {
-    float2 p = globeCoordinates(in.uv,u);
+float globeCoverage(float2 pixelPosition, constant Uniforms &u) {
+    if (u.connection.z < 0.5) return 1.0;
+    float2 ndc = pixelPosition/u.viewport.xy*2.0-1.0;
+    float radius = length(globeCoordinates(ndc,u));
+    return 1.0-smoothstep(0.995,1.005,radius);
+}
+
+float4 globeSurface(float2 ndc, float2 pixelPosition, constant Uniforms &u) {
+    float2 p = globeCoordinates(ndc,u);
     float r = length(p);
     float dark = u.timing.w;
     float a = u.timing.z;
@@ -605,7 +614,60 @@ fragment float4 globeFragment(ScreenVertex in [[stage_in]], constant Uniforms &u
     float bottomGlow = exp(-dot((p-float2(0,-0.68))*float2(2.8,9.0),
                                (p-float2(0,-0.68))*float2(2.8,9.0)));
     color += float3(0.009,0.019,0.025)*bottomGlow*dark*(0.5+a*0.5);
-    return float4(color,1);
+    float coverage = globeCoverage(pixelPosition,u);
+    return float4(color*coverage,coverage);
+}
+
+fragment float4 globeFragment(ScreenVertex in [[stage_in]], constant Uniforms &u [[buffer(0)]]) {
+    return globeSurface(in.uv,in.position.xy,u);
+}
+
+// An inverse lens map through a rounded glass wall. Its displacement is tiny
+// at the center, peaks in the outer tenth, and rejoins the silhouette at the edge.
+// Sampling the completed particle image bends the heads AND their curved trails.
+float2 glassRay(float2 p, float strength) {
+    float r = length(p);
+    if (r <= 0.0001 || r >= 1.0) return p;
+    float wall = pow(r,5.0)*sqrt(max(0.0,1.0-r*r));
+    return p*(1.0-strength*0.45*wall/r);
+}
+
+fragment float4 glassLensFragment(ScreenVertex in [[stage_in]],
+                                 constant Uniforms &u [[buffer(0)]],
+                                 texture2d<float> particles [[texture(0)]],
+                                 texture2d<float> desktop [[texture(1)]]) {
+    float glassOpacity = u.optics.y;
+    constexpr sampler linearSampler(coord::normalized,address::clamp_to_edge,filter::linear);
+    float2 uv = in.position.xy/u.viewport.xy;
+    float2 globeScale = min(u.viewport.x,u.viewport.y)*0.445/u.viewport.xy;
+    float2 p = (uv-0.5)/globeScale;
+    float radius = length(p);
+    float2 ray = glassRay(p,u.optics.x);
+    float2 particleUV = 0.5+ray*globeScale;
+    float4 snow = particles.sample(linearSampler,particleUV);
+    float4 body = globeSurface(in.uv,in.position.xy,u);
+    float mask = globeCoverage(in.position.xy,u);
+    // Grazing reflections strengthen with the wall's optical effect.
+    float depth = sqrt(max(0.0,1.0-radius*radius));
+    float fresnel = pow(1.0-depth,4.0)*(1.0-smoothstep(0.995,1.005,radius));
+    float reflection = u.optics.x*fresnel*(0.018+0.045*pow(max(0.0,-p.x-p.y)*0.707,6.0));
+    body.rgb += float3(0.82,0.93,1.0)*reflection;
+    float4 glass = body*glassOpacity;
+    if (u.optics.z > 0.5 && u.connection.z > 0.5 && radius < 1.005) {
+        // Clear glass still lenses the desktop at the full optical strength.
+        float2 desktopUV = u.backdropUV.xy+particleUV*u.backdropUV.zw;
+        if (all(desktopUV >= 0.0) && all(desktopUV <= 1.0)) {
+            float3 behind = desktop.sample(linearSampler,desktopUV).rgb;
+            // Composite the captured refracted image once. Using window alpha
+            // here would superimpose the undistorted desktop as a second image.
+            float3 tinted = mix(behind,body.rgb/max(0.0001,body.a),glassOpacity);
+            glass = float4(tinted*mask,mask);
+        }
+    }
+    // The slider changes the glass behind the snow. Particle heads, trails,
+    // and their emission keep their own alpha and brightness at every setting.
+    snow *= mask;
+    return snow+glass*(1.0-snow.a);
 }
 
 float3 hsv(float h, float s, float v) {
@@ -813,7 +875,7 @@ vertex TrailVertex trailVertex(uint vertexID [[vertex_id]], uint id [[instance_i
             appearance.pigment.rgb,u.timing.w,fade};
 }
 
-fragment float4 trailFragment(TrailVertex in [[stage_in]]) {
+fragment float4 trailFragment(TrailVertex in [[stage_in]], constant Uniforms &u [[buffer(0)]]) {
     if (in.fade < 0.001) discard_fragment();
     float across = in.uv.x*in.uv.x;
     float coverage = (exp(-across*28.0)*0.25+exp(-across*5.0)*0.075)*in.fade*in.color.a;
@@ -822,10 +884,10 @@ fragment float4 trailFragment(TrailVertex in [[stage_in]]) {
     // Saturated bodies keep light-mode tails visible; their narrow luminous
     // core carries a small glint without washing the whole ribbon white.
     float3 lightGlow = mix(in.pigment,in.color.rgb,0.08*exp(-across*45.0));
-    return float4(mix(lightGlow,darkGlow,in.dark)*coverage,coverage);
+    return float4(mix(lightGlow,darkGlow,in.dark)*coverage,coverage)*globeCoverage(in.position.xy,u);
 }
 
-fragment float4 particleFragment(ParticleVertex in [[stage_in]]) {
+fragment float4 particleFragment(ParticleVertex in [[stage_in]], constant Uniforms &u [[buffer(0)]]) {
     if (in.visible < 0.003) discard_fragment();
     float r2 = dot(in.uv,in.uv);
     float core = exp(-r2*75.0)*0.88;
@@ -834,7 +896,8 @@ fragment float4 particleFragment(ParticleVertex in [[stage_in]]) {
                  +exp(-abs(in.uv.y)*72.0-abs(in.uv.x)*6.0))*in.sparkle*0.045*in.bloom;
     float coverage = clamp((core+halo+star)*in.color.a,0.0,0.98);
     float4 darkParticle = float4(in.color.rgb*coverage,coverage);
-    if (in.dark > 0.9999) return darkParticle;
+    float mask = globeCoverage(in.position.xy,u);
+    if (in.dark > 0.9999) return darkParticle*mask;
 
     // Light mode uses pigment plus specular glints, rather than washing the
     // pigment out with its emitted brightness. Idle has a saturated sky-blue body.
@@ -846,5 +909,5 @@ fragment float4 particleFragment(ParticleVertex in [[stage_in]]) {
     float glint = clamp(exp(-r2*210.0)*in.sparkle*0.27*in.color.a+star*0.35,0.0,0.65);
     lightColor = lightColor*(1.0-glint)+in.color.rgb*glint;
     lightAlpha += (1.0-lightAlpha)*glint;
-    return mix(float4(lightColor,lightAlpha),darkParticle,in.dark);
+    return mix(float4(lightColor,lightAlpha),darkParticle,in.dark)*mask;
 }

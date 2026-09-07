@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		3B9E0C3A7F2845DAB4561003 /* DesktopGlassCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B9E0C3A7F2845DAB4561004 /* DesktopGlassCapture.swift */; };
+		3B9E0C3A7F2845DAB4561001 /* GlobePresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B9E0C3A7F2845DAB4561002 /* GlobePresentation.swift */; };
 		344A7594AC196B60C8238052 /* Fixtures in Resources */ = {isa = PBXBuildFile; fileRef = A93FCAE84E886141EADDD2E1 /* Fixtures */; };
 		5CBE065F43ACF8EAE5394211 /* SnowGlobe in Frameworks */ = {isa = PBXBuildFile; productRef = 672A2195AF1EA908D7C02485 /* SnowGlobe */; };
 		C1A54F01EE9F69BD49A8626D /* SnowGlobeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C5B499A90A6BD5FBD8019D9 /* SnowGlobeApp.swift */; };
@@ -17,6 +19,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		3B9E0C3A7F2845DAB4561004 /* DesktopGlassCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopGlassCapture.swift; sourceTree = "<group>"; };
+		3B9E0C3A7F2845DAB4561002 /* GlobePresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobePresentation.swift; sourceTree = "<group>"; };
 		0028BC8A17A47F0C4BB61205 /* SnowGlobeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SnowGlobeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		01729DC8AD04848010DECF98 /* package-extraction */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "package-extraction"; path = .; sourceTree = SOURCE_ROOT; };
 		1AFE97BA8E22D2FBD36F2BB3 /* RenderValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderValidation.swift; sourceTree = "<group>"; };
@@ -79,6 +83,8 @@
 			isa = PBXGroup;
 			children = (
 				9C5B499A90A6BD5FBD8019D9 /* SnowGlobeApp.swift */,
+				3B9E0C3A7F2845DAB4561002 /* GlobePresentation.swift */,
+				3B9E0C3A7F2845DAB4561004 /* DesktopGlassCapture.swift */,
 				CE1EF96B8BB58BA3786C63BE /* SpeechController.swift */,
 			);
 			name = SnowGlobeDemo;
@@ -203,6 +209,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				C1A54F01EE9F69BD49A8626D /* SnowGlobeApp.swift in Sources */,
+				3B9E0C3A7F2845DAB4561001 /* GlobePresentation.swift in Sources */,
+				3B9E0C3A7F2845DAB4561003 /* DesktopGlassCapture.swift in Sources */,
 				F2D25162DB8D10482AEBC693 /* SpeechController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -279,8 +287,9 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_IDENTITY = "Apple Development: Scott Ryder (P89GW6LDHS)";
 				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = 2NYQ5ZAM48;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -380,8 +389,9 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_IDENTITY = "Apple Development: Scott Ryder (P89GW6LDHS)";
 				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = 2NYQ5ZAM48;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;

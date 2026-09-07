@@ -9,6 +9,7 @@ public struct SnowGlobeView: View {
     private let isConnected: Bool
     private let configuration: SnowGlobeConfiguration
     private let speechMeter: SpeechMeter?
+    private let glassBackdrop: GlassBackdrop?
     private let onError: ((Error) -> Void)?
     @Environment(\.colorScheme) private var colorScheme
     @State private var failure: String?
@@ -18,14 +19,17 @@ public struct SnowGlobeView: View {
     ///   - isConnected: False lets particles fall and settle; true restores circulation.
     ///   - configuration: Shared, tuned defaults unless explicitly overridden.
     ///   - speechMeter: A persistent, thread-safe mailbox fed using actual audio playback time.
+    ///   - glassBackdrop: Optional local image for refraction behind a transparent globe.
     ///   - onError: Called on the main queue if Metal initialization fails.
     public init(activity: Float = 0, isConnected: Bool = true,
                 configuration: SnowGlobeConfiguration = .default,
-                speechMeter: SpeechMeter? = nil, onError: ((Error) -> Void)? = nil) {
+                speechMeter: SpeechMeter? = nil, glassBackdrop: GlassBackdrop? = nil,
+                onError: ((Error) -> Void)? = nil) {
         self.activity = activity
         self.isConnected = isConnected
         self.configuration = configuration
         self.speechMeter = speechMeter
+        self.glassBackdrop = glassBackdrop
         self.onError = onError
     }
 
@@ -34,7 +38,8 @@ public struct SnowGlobeView: View {
             (configuration.appearance == .automatic && colorScheme == .dark)
         ZStack {
             MetalGlobe(activity: activity, isConnected: isConnected,
-                       configuration: configuration.normalized, dark: dark, speechMeter: speechMeter) { error in
+                       configuration: configuration.normalized, dark: dark, speechMeter: speechMeter,
+                       glassBackdrop: glassBackdrop) { error in
                 failure = error.localizedDescription
                 onError?(error)
             }
@@ -56,6 +61,7 @@ private struct MetalGlobe {
     let configuration: SnowGlobeConfiguration
     let dark: Bool
     let speechMeter: SpeechMeter?
+    let glassBackdrop: GlassBackdrop?
     let onError: (Error) -> Void
 
     final class Coordinator {
@@ -88,8 +94,9 @@ private struct MetalGlobe {
             if let layer = view.layer as? CAMetalLayer {
                 layer.colorspace = CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3)
                 layer.wantsExtendedDynamicRangeContent = true
-                layer.isOpaque = true
+                layer.isOpaque = !configuration.transparentBackground
             }
+            updateBackground(view)
         } catch {
             view.isPaused = true
             DispatchQueue.main.async { onError(error) }
@@ -98,6 +105,10 @@ private struct MetalGlobe {
     }
 
     func update(_ renderer: ParticleRenderer) {
+        renderer.targetGlassEffect = configuration.glassEffect
+        renderer.opacity = configuration.opacity
+        renderer.glassBackdrop = glassBackdrop
+        renderer.transparentBackground = configuration.transparentBackground
         renderer.speechMeter = speechMeter
         if speechMeter == nil {
             renderer.targetSpeech = .zero
@@ -123,12 +134,23 @@ private struct MetalGlobe {
         view.delegate = nil
         coordinator.renderer = nil
     }
+
+    func updateBackground(_ view: MTKView) {
+        #if os(macOS)
+        view.layer?.isOpaque = !configuration.transparentBackground && configuration.opacity >= 1
+        #else
+        view.layer.isOpaque = !configuration.transparentBackground && configuration.opacity >= 1
+        view.isOpaque = !configuration.transparentBackground && configuration.opacity >= 1
+        view.backgroundColor = view.isOpaque ? .black : .clear
+        #endif
+    }
 }
 
 #if os(macOS)
 extension MetalGlobe: NSViewRepresentable {
     func makeNSView(context: Context) -> MTKView { makeView(coordinator: context.coordinator) }
     func updateNSView(_ view: MTKView, context: Context) {
+        updateBackground(view)
         if let renderer = context.coordinator.renderer { update(renderer) }
     }
     static func dismantleNSView(_ view: MTKView, coordinator: Coordinator) { dismantle(view, coordinator: coordinator) }
@@ -137,6 +159,7 @@ extension MetalGlobe: NSViewRepresentable {
 extension MetalGlobe: UIViewRepresentable {
     func makeUIView(context: Context) -> MTKView { makeView(coordinator: context.coordinator) }
     func updateUIView(_ view: MTKView, context: Context) {
+        updateBackground(view)
         if let renderer = context.coordinator.renderer { update(renderer) }
     }
     static func dismantleUIView(_ view: MTKView, coordinator: Coordinator) { dismantle(view, coordinator: coordinator) }

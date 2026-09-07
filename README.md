@@ -90,7 +90,7 @@ struct AgentActivityView: View {
 
 `activity` is normalized from **0 to 1**. Feed changes directly; the renderer supplies its own smoothing. Medium and large effort changes respond faster, while small changes keep the gentle organic motion. Keep the view's identity stable: repeatedly changing `.id(...)` or removing/reinserting it recreates the simulation and history.
 
-The globe stays circular in a rectangular frame, using about 89% of the shorter dimension. It draws its own opaque, theme-matched background. Use `.frame(...)` or your layout container to resize it. Below 360 logical points in globe diameter, particle footprints, trail widths, and high-effort emission scale down to keep small globes from turning into white bloom.
+The globe stays circular in a rectangular frame, using about 89% of the shorter dimension. By default it draws its own opaque, theme-matched background. Set `configuration.transparentBackground = true` to clear the area outside the sphere for overlays; use `configuration.opacity` to adjust the glass body from clear (0) to solid (1), while particles and trails retain their own opacity. Keep the containing window at full alpha when supplying a live backdrop so the renderer can composite refraction without a second, undistorted image. Use `.frame(...)` or your layout container to resize it. Below 360 logical points in globe diameter, particle footprints, trail widths, and high-effort emission scale down to keep small globes from turning into white bloom.
 
 ## Defaults and controls
 
@@ -111,6 +111,9 @@ All presentation defaults are defined by **`SnowGlobeConfiguration.default`**. T
 | Live speech trails | **Off** | Automatically forced to zero in `.live` mode |
 | `speechExpression` | **100%** | `0...2`; zero disables speech motion and lighting |
 | `flashFactor` | **300%** | `0...8`; voice illumination with EDR overdrive |
+| `transparentBackground` | **`false`** | Clear outside the sphere for overlays |
+| `glassEffect` | **45%** | `0...1`; optical distortion and grazing reflections, strongest near the rim; zero restores the original image |
+| `opacity` | **100%** | `0...1`; glass body opacity only; zero is clear glass with visible particles |
 | Container | **Sphere** | Fixed; the discarded depth/flattening control is not exposed |
 
 Idle uses only part of the particle budget; **10,000 is the full-effort limit**, not a guarantee of 10,000 visible particles at rest. The full simulation capacity remains allocated regardless of the budget slider.
@@ -244,6 +247,18 @@ This is the completed visual prototype, not a performance-tuned low-memory widge
 
 The resizable macOS window includes light/dark appearance, simulated connection, Ring/Disc, activity, particle count, size, idle speed, normal and speaking trails, live waveform, speech expression, flash factor, and a text editor with standard Cut/Copy/Paste commands.
 
+**Free-floating globe** moves the running globe into a draggable, borderless panel above ordinary windows and leaves the controls in a compact window. The **Glass transparency** slider appears in floating mode: 0% is solid glass, 100% is clear glass, and the initial setting is 25%. It changes the glass tint while keeping particle heads, trails, and emission at their normal opacity and brightness. Clear glass remains draggable and retains optical refraction. Turn the toggle off to return the globe to the main window. Activity, appearance, speech, and tuning controls continue to update the same renderer in either mode. Closing the controls quits the app and removes the floating globe.
+
+The **Glass effect** slider bends particles and their trails through the rounded glass wall in either mode. The center stays comparatively clear, and the outer region magnifies and compresses the image. It is an artistic optical approximation, not a physical ray tracer. At zero, refraction is off.
+
+In floating mode, **Enable desktop refraction** requests macOS Screen Recording access if needed. Allow Snow Globe in System Settings, then return to the app; reopen Snow Globe if macOS requests a relaunch. Granted screen access automatically enables desktop refraction whenever the floating globe has a nonzero Glass effect. The panel reports **Desktop refraction is live** only after a usable screen frame arrives; missing permission and capture failures are shown explicitly. Without access, particle refraction and normal transparency still work. Desktop lens strength follows **Glass effect** independently of glass transparency, including at 100% clear.
+
+The app excludes its own globe from a local ScreenCaptureKit display stream to prevent feedback; it captures no audio, saves no frames, and sends nothing over the network. It keeps the latest frame for a moving lens, at up to 30 fps and a maximum 4,096-pixel long edge. Setting Glass effect to Off, docking the globe, or quitting stops the stream. Clear glass keeps the stream running for desktop refraction.
+
+The floating globe handles ordinary mouse-down, drag, and mouse-up events without a modal drag loop. It coalesces screen-coordinate mouse input onto Metal redraws and presents the new window position and refracted pixels in the same Core Animation transaction. Queued events cannot feed an older window position back into the drag; normal presentation resumes after mouse-up. The renderer reprojects the latest captured display image at its own frame rate; dragging across a static desktop does not need a fresh captured frame. For a clear visual check, disconnect the AI so particles settle, then drag the globe over text or straight window edges.
+
+The public `GlassBackdrop` mailbox also accepts a consumer-provided BGRA Display P3 pixel buffer for custom backgrounds; its normalized `updateViewport` rectangle uses a top-left origin. Pass the mailbox as `glassBackdrop:` to `SnowGlobeView`. Screen capture remains demo functionality, separate from the reusable library. The floating app currently refracts the display containing the globe; while crossing a display boundary, portions outside that display fall back to ordinary transparency until the capture switches.
+
 The demo synthesizes each sentence with `/usr/bin/say -v "Jamie (Premium)"`, plays clips using `AVAudioPlayer`, and prepares subsequent sentences in the background. Stop cancels playback and outstanding synthesis. A missing voice or failed synthesis is reported in the UI. The package itself has no dependency on Jamie, Siri, `/usr/bin/say`, or Natural Language sentence splitting.
 
 Build from Terminal:
@@ -252,6 +267,8 @@ Build from Terminal:
 ./scripts/build.sh
 open 'build/Build/Products/Release/Snow Globe.app'
 ```
+
+Debug and Release builds use **Apple Development: Scott Ryder (P89GW6LDHS)**, team **2NYQ5ZAM48**. Both build scripts inherit these project settings, and the release script verifies the resulting signature. Keep the same signing identity and bundle identifier (`com.swryder.SnowGlobe`) across rebuilds so macOS can recognize the app's screen-access authorization. The switch from the older ad hoc signature may require one final permission grant. On another developer's Mac, choose their signing identity in both `project.yml` and the Xcode project before building.
 
 Optional preview arguments:
 
@@ -266,6 +283,9 @@ open 'build/Build/Products/Release/Snow Globe.app' --args \
 | `--particle-limit 10…33600` | Initial full-effort population limit |
 | `--particle-size 0.5…20` | Initial size multiplier |
 | `--light` | Start in light appearance |
+| `--floating` | Start with the borderless globe and separate controls |
+| `--glass-effect 0…1` | Initial optical strength; zero turns refraction off |
+| `--transparency 0…1` | Initial floating glass transparency; particles remain visible |
 | `--ring` | Start with ring distribution |
 | `--disconnected` | Start with particles falling to the bottom |
 | `--flowing-waveform` | Start with flowing speech instead of live |
@@ -295,7 +315,7 @@ The script builds the demo, runs the Xcode test target, and stores the `.xcresul
 SNOW_GLOBE_VALIDATION_OUTPUT="$PWD/build/validation" swift test -c release
 ```
 
-Tests cover the shipped defaults and input sanitation, mailbox/session semantics, audio analysis, CPU/GPU buffer layout, finite simulation, sphere confinement, organic wall-following currents, particle admission, count and size extremes, adaptive effort changes, curved trails, sparkle, EDR, live speech details, rapid speech completion, disconnect/settling/reconnect, and small-size bloom. The full Metal regression is a macOS test and requires a GPU; it reports a skip if Metal is unavailable. The API/audio tests also compile for iOS.
+Tests cover the shipped defaults and input sanitation, mailbox/session semantics, audio analysis, CPU/GPU buffer layout, finite simulation, sphere confinement, organic wall-following currents, particle admission, count and size extremes, adaptive effort changes, curved trails, sparkle, EDR, live speech details, rapid speech completion, disconnect/settling/reconnect, small-size bloom, optical strength, edge-weighted refraction, backdrop color/orientation, moving viewport alignment, transparency after capture loss, and unchanged particle/trail color and coverage across glass transparency settings. The full Metal regression is a macOS test and requires a GPU; it reports a skip if Metal is unavailable. The API/audio tests also compile for iOS.
 
 `Tests/SnowGlobeTests/Fixtures/SpeechFixture.aiff` supplies reproducible spoken audio. Tests do not need an installed speech voice, network service, microphone, or audible playback. PNGs are SDR previews and clip HDR highlights; raw linear-light peak measurements are recorded separately.
 
@@ -309,12 +329,13 @@ Snow Globe/
 ├── Sources/SnowGlobe/
 │   ├── SnowGlobeView.swift            # Public SwiftUI view and platform bridges
 │   ├── SnowGlobeConfiguration.swift   # Defaults, ranges, appearance and modes
+│   ├── GlassBackdrop.swift           # Optional image mailbox for optical refraction
 │   ├── SpeechMeter.swift              # Thread-safe live input
 │   ├── SpeechEnvelope.swift           # Optional file audio analyzer
 │   ├── ParticleRenderer.swift        # Internal Metal host and simulation
 │   ├── MetalLibrary.swift             # Package-owned shader loading
 │   └── Shaders/Particles.metal        # Production compute/render kernels
-├── Examples/SnowGlobeDemo/            # App window, controls, local TTS playback
+├── Examples/SnowGlobeDemo/            # Controls, floating panel, local TTS playback
 ├── Tests/SnowGlobeTests/              # API checks and production GPU regression
 │   └── Fixtures/                     # Recorded TTS input, test-only resource
 └── scripts/                          # Build and validation entry points

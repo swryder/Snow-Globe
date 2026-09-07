@@ -4,6 +4,7 @@ import AppKit
 import UIKit
 #endif
 import MetalKit
+import CoreVideo
 import simd
 
 struct Particle {
@@ -25,6 +26,8 @@ struct Uniforms {
     var speechLight: SIMD4<Float>
     var speechMode: SIMD4<Float>
     var connection: SIMD4<Float>
+    var optics: SIMD4<Float>
+    var backdropUV: SIMD4<Float>
 }
 
 enum RendererFailure: LocalizedError {
@@ -63,6 +66,9 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
     private let globePipeline: MTLRenderPipelineState
     private let particlePipeline: MTLRenderPipelineState
     private let trailPipeline: MTLRenderPipelineState
+    private let lensPipeline: MTLRenderPipelineState
+    private var sceneTexture: MTLTexture?
+    private var textureCache: CVMetalTextureCache?
     let history: MTLBuffer
     private(set) var historyCursor: UInt32 = 0
     private(set) var particles: MTLBuffer
@@ -72,7 +78,12 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
     private let inFlight = DispatchSemaphore(value: 3)
 
     var speechMeter: SpeechMeter?
+    var glassBackdrop: GlassBackdrop?
+    var targetGlassEffect: Float = 0
+    private(set) var glassEffect: Float = 0
+    var opacity: Float = 1
     var targetConnected = true
+    var transparentBackground = false
     private(set) var connection: Float = 1
     var targetSpeech: SIMD2<Float> = .zero
     var targetSpeechWaveform: [SIMD2<Float>] = []
@@ -186,6 +197,7 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
         globePipeline = try render(vertex: "fullscreenVertex", fragment: "globeFragment", blend: false)
         particlePipeline = try render(vertex: "particleVertex", fragment: "particleFragment", blend: true)
         trailPipeline = try render(vertex: "trailVertex", fragment: "trailFragment", blend: true)
+        lensPipeline = try render(vertex: "fullscreenVertex", fragment: "glassLensFragment", blend: false)
 
         func buffer(_ length: Int, _ label: String) throws -> MTLBuffer {
             guard let buffer = device.makeBuffer(length: length, options: .storageModeShared) else {
@@ -201,6 +213,7 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
         gridCounts = try buffer(cells * 4, "Collision cell counts")
         gridIndices = try buffer(cells * Self.cellCapacity * 4, "Collision cell indices")
         super.init()
+        CVMetalTextureCacheCreate(nil,nil,device,nil,&textureCache)
         dark = initialDark
         targetDark = initialDark
         disc = initialDisc
@@ -227,7 +240,9 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
                  speech: SIMD4(speechLevel*speechExpression, speechAccent*speechExpression, speechTime, speechPresence*min(1,speechExpression)),
                  speechLight: SIMD4(flashFactor, speechFlashLevel*speechExpression, speechFlashAccent*speechExpression, speechPresence),
                  speechMode: SIMD4(liveWaveform, Float(SpeechEnvelope.waveformDuration), targetSpeechWaveform.count == SpeechEnvelope.waveformSamples ? 1 : 0, Float(SpeechEnvelope.waveformSamples)),
-                 connection: SIMD4(connection,targetConnected ? 1 : 0,0,0))
+                 connection: SIMD4(connection,targetConnected ? 1 : 0,transparentBackground ? 1 : 0,0),
+                 optics: SIMD4(glassEffect,opacity,0,0),
+                 backdropUV: SIMD4(0,0,1,1))
     }
 
     private func dispatch(_ encoder: MTLComputeCommandEncoder, _ pipeline: MTLComputePipelineState) {
@@ -282,6 +297,7 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
     /// whether a display runs at 60 Hz, 120 Hz, or changes refresh rate.
     func step(command: MTLCommandBuffer, clockRate: Float? = nil) {
         let dt = Self.fixedStep
+        glassEffect += (min(1,max(0,targetGlassEffect))-glassEffect)*(1-exp(-dt*8))
         connection += ((targetConnected ? Float(1) : 0)-connection)*(1-exp(-dt*2.5))
         let voice = targetConnected ? simd_clamp(targetSpeech, SIMD2<Float>.zero, SIMD2<Float>(repeating: 1)) : .zero
         speechLevel += (voice.x-speechLevel)*(1-exp(-dt*(voice.x > speechLevel ? 30 : 7)))
@@ -389,36 +405,88 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
         }
     }
 
-    func render(command: MTLCommandBuffer, texture: MTLTexture, scale: Float, edr: Float, trailOverride: Float? = nil, sparkleOverride: Float? = nil, flashOverride: Float? = nil) {
+    private func encodeParticles(_ encoder: MTLRenderCommandEncoder, uniforms: Uniforms) {
+        var u = uniforms
+        encoder.setFragmentBytes(&u,length: MemoryLayout<Uniforms>.stride,index: 0)
+        speechHistory.withUnsafeBytes { encoder.setVertexBytes($0.baseAddress!,length: $0.count,index: 3) }
+        if u.controls.z > 0.0005 {
+            encoder.setRenderPipelineState(trailPipeline)
+            encoder.setVertexBuffer(particles,offset: 0,index: 0)
+            encoder.setVertexBytes(&u,length: MemoryLayout<Uniforms>.stride,index: 1)
+            encoder.setVertexBuffer(history,offset: 0,index: 2)
+            encoder.drawPrimitives(type: .triangleStrip,vertexStart: 0,
+                                   vertexCount: (Self.trailSegments+1)*2,instanceCount: Self.particleCount)
+        }
+        encoder.setRenderPipelineState(particlePipeline)
+        encoder.setVertexBuffer(particles,offset: 0,index: 0)
+        encoder.setVertexBytes(&u,length: MemoryLayout<Uniforms>.stride,index: 1)
+        encoder.drawPrimitives(type: .triangle,vertexStart: 0,vertexCount: 6,instanceCount: Self.particleCount)
+    }
+
+    private func backdropTexture(command: MTLCommandBuffer) -> (MTLTexture, CGRect)? {
+        guard transparentBackground, let frame = glassBackdrop?.snapshot(), let cache = textureCache else { return nil }
+        var wrapped: CVMetalTexture?
+        let status = CVMetalTextureCacheCreateTextureFromImage(nil,cache,frame.buffer,nil,.bgra8Unorm_srgb,
+            CVPixelBufferGetWidth(frame.buffer),CVPixelBufferGetHeight(frame.buffer),0,&wrapped)
+        guard status == kCVReturnSuccess, let wrapped, let texture = CVMetalTextureGetTexture(wrapped) else { return nil }
+        // The capture producer can replace its mailbox while this frame is in flight.
+        command.addCompletedHandler { _ in withExtendedLifetime((frame.buffer,wrapped)) {} }
+        return (texture,frame.viewport)
+    }
+
+    func render(command: MTLCommandBuffer, texture: MTLTexture, scale: Float, edr: Float,
+                trailOverride: Float? = nil, sparkleOverride: Float? = nil, flashOverride: Float? = nil,
+                glassOverride: Float? = nil) {
+        var u = uniforms(size: CGSize(width: texture.width,height: texture.height),scale: scale,edr: edr)
+        if let trailOverride { u.controls.z = min(1,max(0,trailOverride)) }
+        if let sparkleOverride { u.controls.w = min(1,max(0,sparkleOverride)) }
+        if let flashOverride { u.speechLight.x = min(Self.maximumFlashFactor,max(0,flashOverride)) }
+        if let glassOverride { u.optics.x = min(1,max(0,glassOverride)) }
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = texture
         pass.colorAttachments[0].loadAction = .dontCare
         pass.colorAttachments[0].storeAction = .store
-        guard let encoder = command.makeRenderCommandEncoder(descriptor: pass) else { return }
-        encoder.label = "Glass and luminous particles — linear Display P3 / EDR"
-        var u = uniforms(size: CGSize(width: texture.width, height: texture.height), scale: scale, edr: edr)
-        if let trailOverride { u.controls.z = min(1,max(0,trailOverride)) }
-        if let sparkleOverride { u.controls.w = min(1,max(0,sparkleOverride)) }
-        if let flashOverride { u.speechLight.x = min(Self.maximumFlashFactor,max(0,flashOverride)) }
-        encoder.setRenderPipelineState(globePipeline)
-        encoder.setFragmentBytes(&u, length: MemoryLayout<Uniforms>.stride, index: 0)
-        speechHistory.withUnsafeBytes { encoder.setVertexBytes($0.baseAddress!, length: $0.count, index: 3) }
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-        // Draw path ribbons beneath their particle heads. History continues to
-        // update while trails are off, so enabling them never reveals stale paths.
-        if u.controls.z > 0.0005 {
-            encoder.setRenderPipelineState(trailPipeline)
-            encoder.setVertexBuffer(particles, offset: 0, index: 0)
-            encoder.setVertexBytes(&u, length: MemoryLayout<Uniforms>.stride, index: 1)
-            encoder.setVertexBuffer(history, offset: 0, index: 2)
-            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0,
-                                   vertexCount: (Self.trailSegments+1)*2, instanceCount: Self.particleCount)
+        if u.optics.x < 0.0001 && u.optics.y >= 1 {
+            guard let encoder = command.makeRenderCommandEncoder(descriptor: pass) else { return }
+            encoder.label = "Glass and particles — original optical path"
+            encoder.setRenderPipelineState(globePipeline)
+            encoder.setFragmentBytes(&u,length: MemoryLayout<Uniforms>.stride,index: 0)
+            encoder.drawPrimitives(type: .triangle,vertexStart: 0,vertexCount: 3)
+            encodeParticles(encoder,uniforms: u)
+            encoder.endEncoding()
+            return
         }
-        encoder.setRenderPipelineState(particlePipeline)
-        encoder.setVertexBuffer(particles, offset: 0, index: 0)
-        encoder.setVertexBytes(&u, length: MemoryLayout<Uniforms>.stride, index: 1)
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: Self.particleCount)
-        encoder.endEncoding()
+        if sceneTexture?.width != texture.width || sceneTexture?.height != texture.height {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba16Float,
+                width: texture.width,height: texture.height,mipmapped: false)
+            descriptor.storageMode = .private
+            descriptor.usage = [.renderTarget,.shaderRead]
+            sceneTexture = device.makeTexture(descriptor: descriptor)
+            sceneTexture?.label = "Particles before glass refraction"
+        }
+        guard let sceneTexture else { return }
+        let scenePass = MTLRenderPassDescriptor()
+        scenePass.colorAttachments[0].texture = sceneTexture
+        scenePass.colorAttachments[0].loadAction = .clear
+        scenePass.colorAttachments[0].clearColor = MTLClearColorMake(0,0,0,0)
+        scenePass.colorAttachments[0].storeAction = .store
+        guard let particlesEncoder = command.makeRenderCommandEncoder(descriptor: scenePass) else { return }
+        particlesEncoder.label = "Particles and trails inside the glass"
+        encodeParticles(particlesEncoder,uniforms: u)
+        particlesEncoder.endEncoding()
+        let backdrop = u.optics.x > 0.0001 ? backdropTexture(command: command) : nil
+        if let (_,rect) = backdrop {
+            u.optics.z = 1
+            u.backdropUV = SIMD4(Float(rect.minX),Float(rect.minY),Float(rect.width),Float(rect.height))
+        }
+        guard let lens = command.makeRenderCommandEncoder(descriptor: pass) else { return }
+        lens.label = "Refract the globe and live backdrop through curved glass"
+        lens.setRenderPipelineState(lensPipeline)
+        lens.setFragmentBytes(&u,length: MemoryLayout<Uniforms>.stride,index: 0)
+        lens.setFragmentTexture(sceneTexture,index: 0)
+        lens.setFragmentTexture(backdrop?.0 ?? sceneTexture,index: 1)
+        lens.drawPrimitives(type: .triangle,vertexStart: 0,vertexCount: 3)
+        lens.endEncoding()
     }
 
     func draw(in view: MTKView) {
@@ -465,8 +533,17 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
         headroom += (max(1,available)-headroom)*Float(1-exp(-elapsed*2))
         if view.preferredFramesPerSecond != refreshRate { view.preferredFramesPerSecond = refreshRate }
         render(command: command, texture: drawable.texture, scale: scale, edr: headroom)
-        command.present(drawable)
-        command.commit()
+        if view.presentsWithTransaction {
+            // A floating drag presents its new position and refracted backdrop
+            // together. Core Animation requires direct drawable presentation
+            // after scheduling; command.present would present asynchronously.
+            command.commit()
+            command.waitUntilScheduled()
+            drawable.present()
+        } else {
+            command.present(drawable)
+            command.commit()
+        }
     }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) { }

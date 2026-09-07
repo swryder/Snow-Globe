@@ -1,7 +1,7 @@
 import Foundation
 
 /// Appearance and motion controls shared by every Snow Globe consumer.
-/// All scalar settings ease into their new values inside the renderer.
+/// Motion and optical strength ease into new values; glass opacity responds immediately.
 public struct SnowGlobeConfiguration: Equatable, Sendable {
     public enum Appearance: String, CaseIterable, Sendable { case dark, light, automatic }
     public enum Shape: String, CaseIterable, Sendable { case disc, ring }
@@ -15,6 +15,7 @@ public struct SnowGlobeConfiguration: Equatable, Sendable {
     public static let trailLengthRange: ClosedRange<Float> = 0...1
     public static let speechExpressionRange: ClosedRange<Float> = 0...2
     public static let flashFactorRange: ClosedRange<Float> = 0...8
+    public static let glassEffectRange: ClosedRange<Float> = 0...1
 
     public var appearance: Appearance
     /// The container is always a sphere; this selects the internal particle distribution.
@@ -31,12 +32,20 @@ public struct SnowGlobeConfiguration: Equatable, Sendable {
     public var speechMode: SpeechMode
     /// Voice lighting gain. Values above 1 use available display EDR headroom.
     public var flashFactor: Float
+    /// Clear pixels outside the sphere for overlays and borderless windows.
+    public var transparentBackground: Bool
+    /// Optical refraction through the curved glass. Zero restores the original image.
+    public var glassEffect: Float
+    /// Opacity of the glass body only, independent of optical strength.
+    /// Zero makes the glass clear; particles and trails retain their own opacity.
+    public var opacity: Float
 
     public init(appearance: Appearance = .dark, shape: Shape = .disc,
                 particleCount: Int = 10_000, particleSize: Float = 1.75,
                 idleSpeed: Float = 4, trailLength: Float = 0.30,
                 speakingTrailLength: Float = 0.50, speechExpression: Float = 1,
-                speechMode: SpeechMode = .live, flashFactor: Float = 3) {
+                speechMode: SpeechMode = .live, flashFactor: Float = 3,
+                transparentBackground: Bool = false, glassEffect: Float = 0.45, opacity: Float = 1) {
         self.appearance = appearance
         self.shape = shape
         self.particleCount = particleCount
@@ -47,6 +56,9 @@ public struct SnowGlobeConfiguration: Equatable, Sendable {
         self.speechExpression = speechExpression
         self.speechMode = speechMode
         self.flashFactor = flashFactor
+        self.transparentBackground = transparentBackground
+        self.glassEffect = glassEffect
+        self.opacity = opacity
     }
 
     /// Clamp at the API boundary without allowing NaN or infinity into the GPU simulation.
@@ -59,6 +71,8 @@ public struct SnowGlobeConfiguration: Equatable, Sendable {
         result.speakingTrailLength = sanitized(speakingTrailLength, in: Self.trailLengthRange, fallback: Self.default.speakingTrailLength)
         result.speechExpression = sanitized(speechExpression, in: Self.speechExpressionRange, fallback: Self.default.speechExpression)
         result.flashFactor = sanitized(flashFactor, in: Self.flashFactorRange, fallback: Self.default.flashFactor)
+        result.glassEffect = sanitized(glassEffect, in: Self.glassEffectRange, fallback: Self.default.glassEffect)
+        result.opacity = sanitized(opacity, in: 0...1, fallback: 1)
         return result
     }
 }
