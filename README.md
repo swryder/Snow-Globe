@@ -275,7 +275,7 @@ The app excludes its own globe from a local ScreenCaptureKit display stream to p
 
 The floating globe handles ordinary mouse-down, drag, and mouse-up events without a modal drag loop. It coalesces screen-coordinate mouse input onto Metal redraws and presents the new window position and refracted pixels in the same Core Animation transaction. Queued events cannot feed an older window position back into the drag; normal presentation resumes after mouse-up. The renderer reprojects the latest captured display image at its own frame rate; dragging across a static desktop does not need a fresh captured frame. For a clear visual check, disconnect the AI so particles settle, then drag the globe over text or straight window edges.
 
-The public `GlassBackdrop` mailbox also accepts a consumer-provided BGRA Display P3 pixel buffer for custom backgrounds; its normalized `updateViewport` rectangle uses a top-left origin. Pass the mailbox as `glassBackdrop:` to `SnowGlobeView`. Screen capture remains demo functionality, separate from the reusable library. The floating app currently refracts the display containing the globe; while crossing a display boundary, portions outside that display fall back to ordinary transparency until the capture switches.
+The public `GlassBackdrop` mailbox also accepts a consumer-provided BGRA Display P3 pixel buffer for custom backgrounds; its normalized `updateViewport` rectangle uses a top-left origin. Pass the mailbox as `glassBackdrop:` to `SnowGlobeView`. For a live desktop behind a floating globe on macOS, the library's `DesktopGlassCapture` fills that mailbox: create one, pass its `backdrop` to `SnowGlobeView`, and call `update(window:active:lens:)` when the floating panel is shown or hidden (`lens` is the globe's rectangle in window coordinates when the globe does not fill its window). It follows window moves and display changes, publishes `state` and a `message` for the UI, and never asks for Screen Recording access on its own; call `enable()` from an explicit control, as the demo does. The floating app currently refracts the display containing the globe; while crossing a display boundary, portions outside that display fall back to ordinary transparency until the capture switches.
 
 The demo synthesizes each sentence with `/usr/bin/say -v "Jamie (Premium)"`, plays clips using `AVAudioPlayer`, and prepares subsequent sentences in the background. Stop cancels playback and outstanding synthesis. A missing voice or failed synthesis is reported in the UI. The package itself has no dependency on Jamie, Siri, `/usr/bin/say`, or Natural Language sentence splitting.
 
@@ -348,6 +348,7 @@ Snow Globe/
 │   ├── SnowGlobeView.swift            # Public SwiftUI view and platform bridges
 │   ├── SnowGlobeConfiguration.swift   # Defaults, ranges, appearance and modes
 │   ├── GlassBackdrop.swift           # Optional image mailbox for optical refraction
+│   ├── DesktopGlassCapture.swift     # macOS live desktop backdrop (ScreenCaptureKit)
 │   ├── SpeechMeter.swift              # Thread-safe live input
 │   ├── SpeechEnvelope.swift           # Optional file audio analyzer
 │   ├── ParticleRenderer.swift        # Internal Metal host and simulation
