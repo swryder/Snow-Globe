@@ -11,6 +11,7 @@ public struct SnowGlobeView: View {
     private let speechMeter: SpeechMeter?
     private let glassBackdrop: GlassBackdrop?
     private let motion: GlobeMotion?
+    private let contextItems: [SnowGlobeContextItem]
     private let onError: ((Error) -> Void)?
     @Environment(\.colorScheme) private var colorScheme
     @State private var failure: String?
@@ -22,11 +23,14 @@ public struct SnowGlobeView: View {
     ///   - speechMeter: A persistent, thread-safe mailbox fed using actual audio playback time.
     ///   - glassBackdrop: Optional local image for refraction behind a transparent globe.
     ///   - motion: Optional physical input; also enables automatic window inertia on macOS.
+    ///   - contextItems: Files the agent can see. Each pending item is a large particle,
+    ///     up to six; committing an item breaks its particle up into the stream.
     ///   - onError: Called on the main queue if Metal initialization fails.
     public init(activity: Float = 0, isConnected: Bool = true,
                 configuration: SnowGlobeConfiguration = .default,
                 speechMeter: SpeechMeter? = nil, glassBackdrop: GlassBackdrop? = nil,
                 motion: GlobeMotion? = nil,
+                contextItems: [SnowGlobeContextItem] = [],
                 onError: ((Error) -> Void)? = nil) {
         self.activity = activity
         self.isConnected = isConnected
@@ -34,6 +38,7 @@ public struct SnowGlobeView: View {
         self.speechMeter = speechMeter
         self.glassBackdrop = glassBackdrop
         self.motion = motion
+        self.contextItems = contextItems
         self.onError = onError
     }
 
@@ -43,7 +48,7 @@ public struct SnowGlobeView: View {
         ZStack {
             MetalGlobe(activity: activity, isConnected: isConnected,
                        configuration: configuration.normalized, dark: dark, speechMeter: speechMeter,
-                       glassBackdrop: glassBackdrop, motion: motion) { error in
+                       glassBackdrop: glassBackdrop, motion: motion, contextItems: contextItems) { error in
                 failure = error.localizedDescription
                 onError?(error)
             }
@@ -54,7 +59,17 @@ public struct SnowGlobeView: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Snow Globe activity")
-        .accessibilityValue(isConnected ? "\(Int(sanitized(activity, in: 0...1, fallback: 0)*100)) percent" : "Disconnected")
+        .accessibilityValue(accessibilityValue)
+    }
+
+    private var accessibilityValue: String {
+        let state = isConnected ? "\(Int(sanitized(activity, in: 0...1, fallback: 0)*100)) percent" : "Disconnected"
+        let attached = Set(contextItems.filter { $0.state == .pending }.map(\.id)).count
+        switch attached {
+        case 0: return state
+        case 1: return "\(state), 1 file attached"
+        default: return "\(state), \(attached) files attached"
+        }
     }
 }
 
@@ -67,6 +82,7 @@ private struct MetalGlobe {
     let speechMeter: SpeechMeter?
     let glassBackdrop: GlassBackdrop?
     let motion: GlobeMotion?
+    let contextItems: [SnowGlobeContextItem]
     let onError: (Error) -> Void
 
     final class Coordinator {
@@ -127,6 +143,7 @@ private struct MetalGlobe {
         renderer.targetFlashFactor = configuration.flashFactor
         renderer.targetActivity = sanitized(activity, in: 0...1, fallback: 0)
         renderer.targetConnected = isConnected
+        renderer.targetContextItems = contextItems
         renderer.targetDark = dark ? 1 : 0
         renderer.targetDisc = configuration.shape == .disc ? 1 : 0
         renderer.targetDensity = Float(configuration.particleCount)/ParticleRenderer.baseParticleCount

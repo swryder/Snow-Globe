@@ -11,6 +11,7 @@
 		344A7594AC196B60C8238052 /* Fixtures in Resources */ = {isa = PBXBuildFile; fileRef = A93FCAE84E886141EADDD2E1 /* Fixtures */; };
 		5CBE065F43ACF8EAE5394211 /* SnowGlobe in Frameworks */ = {isa = PBXBuildFile; productRef = 672A2195AF1EA908D7C02485 /* SnowGlobe */; };
 		6D5C7C47D5FC1D701B215B0E /* GlobePresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2BFF681250D5D98291010E8 /* GlobePresentation.swift */; };
+		77084886E963411EF3459CB9 /* ContextParticlesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFED6580738614A65301449A /* ContextParticlesTests.swift */; };
 		B2CED364AEABCAE678A1BBA6 /* MotionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E7FDD31016B2F4DDA372B24 /* MotionTests.swift */; };
 		C1A54F01EE9F69BD49A8626D /* SnowGlobeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C5B499A90A6BD5FBD8019D9 /* SnowGlobeApp.swift */; };
 		C5A2E7062EFFADD4C5E5A81A /* RenderValidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AFE97BA8E22D2FBD36F2BB3 /* RenderValidation.swift */; };
@@ -30,6 +31,7 @@
 		A93FCAE84E886141EADDD2E1 /* Fixtures */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Fixtures; path = Tests/SnowGlobeTests/Fixtures; sourceTree = SOURCE_ROOT; };
 		BE24EFC797EC1F4BCBBD26EE /* SnowGlobeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnowGlobeTests.swift; sourceTree = "<group>"; };
 		CE1EF96B8BB58BA3786C63BE /* SpeechController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechController.swift; sourceTree = "<group>"; };
+		DFED6580738614A65301449A /* ContextParticlesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextParticlesTests.swift; sourceTree = "<group>"; };
 		E2BFF681250D5D98291010E8 /* GlobePresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobePresentation.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -95,6 +97,7 @@
 		F75445CD9D5CDD27AF8BBB67 /* SnowGlobeTests */ = {
 			isa = PBXGroup;
 			children = (
+				DFED6580738614A65301449A /* ContextParticlesTests.swift */,
 				34D89E369CD7C0098FE7FC41 /* DesktopGlassCaptureTests.swift */,
 				2E7FDD31016B2F4DDA372B24 /* MotionTests.swift */,
 				1AFE97BA8E22D2FBD36F2BB3 /* RenderValidation.swift */,
@@ -204,6 +207,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				77084886E963411EF3459CB9 /* ContextParticlesTests.swift in Sources */,
 				0626EC5A5EED1E9B62B7A362 /* DesktopGlassCaptureTests.swift in Sources */,
 				B2CED364AEABCAE678A1BBA6 /* MotionTests.swift in Sources */,
 				C5A2E7062EFFADD4C5E5A81A /* RenderValidation.swift in Sources */,

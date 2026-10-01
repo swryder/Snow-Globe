@@ -1000,6 +1000,126 @@ enum RenderValidation {
         print("PASS: finite simulation, confinement, wisps, wall gliding, five currents, collisions, EDR, smooth settling, resize, energy-driven Disc release and recovery, density range, size coverage, sustained idle glass contact, two perpendicular opposing midpoint currents, adjustable idle movement, crowded collisions, curved trail history, trail-length coverage, exact off rendering, 10–33,600 particle budgets, 20× size, and effort-driven sparkle")
     }
 
+    /// Large context particles hold their slots, then break up into exactly the
+    /// recruited number of existing stream particles. The visible total is kept.
+    static func checkContextParticles(in output: URL) throws {
+        try FileManager.default.createDirectory(at: output,withIntermediateDirectories: true)
+        let renderer = try ParticleRenderer()
+        func advance(_ seconds: Double) throws {
+            let steps = Int(seconds / Double(ParticleRenderer.fixedStep))
+            for start in stride(from: 0, to: steps, by: 8) {
+                guard let command = renderer.queue.makeCommandBuffer() else {
+                    throw RendererFailure.unavailable("Validation command allocation failed")
+                }
+                for _ in start..<min(start+8,steps) { renderer.step(command: command) }
+                command.commit()
+                command.waitUntilCompleted()
+                if let error = command.error { throw error }
+            }
+        }
+        func visibleCount() -> Int {
+            let particles = renderer.particles.contents().bindMemory(to: Particle.self,capacity: ParticleRenderer.particleCount)
+            return (0..<ParticleRenderer.particleCount).filter { particles[$0].position.w > 0.5 }.count
+        }
+        func fragmentStates() -> [Int] {
+            let states = renderer.fragmentState.contents().bindMemory(to: SIMD4<Float>.self,capacity: ParticleRenderer.particleCount)
+            var counts = [0,0,0]
+            for id in 0..<ParticleRenderer.particleCount { counts[min(2,max(0,Int(states[id].z.rounded())))] += 1 }
+            return counts
+        }
+        func bodies() -> [SIMD3<Float>] {
+            let pointer = renderer.contextBodies.contents().bindMemory(to: ContextBody.self,capacity: ContextParticles.slotCount)
+            return (0..<ContextParticles.slotCount).map { SIMD3(pointer[$0].position.x,pointer[$0].position.y,pointer[$0].position.z) }
+        }
+        try advance(2)
+        let plain = try snapshot(renderer,url: output.appendingPathComponent("context-none.png"),width: 600,height: 600)
+        let baseline = visibleCount()
+        let ids = ["a","b","c"]
+        renderer.targetContextItems = ids.map { SnowGlobeContextItem(id: $0) }
+        try advance(1.5)
+        for (slot,body) in bodies().prefix(3).enumerated() {
+            try require((0..<3).allSatisfy { body[$0].isFinite } && length(body) < 0.91,
+                        "Context particle \(slot) left the glass: \(body)")
+        }
+        // Separate rings: orbital planes differ, so the particles never march in a line.
+        let velocities: [SIMD3<Float>] = {
+            let pointer = renderer.contextBodies.contents().bindMemory(to: ContextBody.self,capacity: ContextParticles.slotCount)
+            return (0..<3).map { SIMD3(pointer[$0].velocity.x,pointer[$0].velocity.y,pointer[$0].velocity.z) }
+        }()
+        let axes = (0..<3).map { normalize(cross(bodies()[$0],velocities[$0])) }
+        for i in 0..<3 { for j in (i+1)..<3 {
+            try require(dot(axes[i],axes[j]) < cos(Float.pi/18),"Context particles \(i) and \(j) share one ring")
+        } }
+        let attached = try snapshot(renderer,url: output.appendingPathComponent("context-attached-dark.png"),width: 600,height: 600)
+        try require(attached.vividPixels > plain.vividPixels+60,"Context particles are not vivid against the idle stream")
+        try require(attached.peak > 1.2,"Context particles did not rise above SDR white")
+        renderer.targetDark = 0
+        try advance(1)
+        _ = try snapshot(renderer,url: output.appendingPathComponent("context-attached-light.png"),width: 600,height: 600)
+        renderer.targetDark = 1
+        _ = try snapshot(renderer,url: output.appendingPathComponent("context-idle-trails.png"),width: 600,height: 600,trailLength: 1)
+        renderer.targetActivity = 0.6
+        try advance(3)
+        let trailed = try snapshot(renderer,url: output.appendingPathComponent("context-flow-trails.png"),width: 600,height: 600,trailLength: 1)
+        let untrailed = try snapshot(renderer,url: output.appendingPathComponent("context-flow-no-trails.png"),width: 600,height: 600,trailLength: 0)
+        try require(trailed.changedPixels(from: untrailed) > 0,"Trail setting had no effect")
+        renderer.targetActivity = 0
+        try advance(3)
+
+        renderer.targetContextItems = ids.map { SnowGlobeContextItem(id: $0,state: .committed) }
+        let wanted = renderer.contexts.entries.reduce(0) { total, entry in
+            if case .merging(_, _, let fragments, _) = entry.phase { return total+fragments }
+            return total
+        }
+        try require(wanted >= 3*ContextParticles.standardFragments.lowerBound,"Commit did not schedule every breakup")
+        try advance(0.6)
+        _ = try snapshot(renderer,url: output.appendingPathComponent("context-breaking.png"),width: 600,height: 600)
+        try advance(1.1)
+        let released = fragmentStates()
+        try require(released[1] == 0,"Fragments were still waiting after every breakup finished")
+        try require(released[2] <= wanted && released[2] >= wanted*9/10,
+                    "Recruited \(released[2]) fragments, wanted \(wanted)")
+        try require(!renderer.contexts.isVisible,"Context particles remained after breaking up")
+        try advance(0.5)
+        let after = visibleCount()
+        try require(abs(after-baseline) <= max(5,baseline/100),
+                    "Breakup changed the visible particle count from \(baseline) to \(after)")
+        let particles = renderer.particles.contents().bindMemory(to: Particle.self,capacity: ParticleRenderer.particleCount)
+        for id in 0..<ParticleRenderer.particleCount {
+            let p = particles[id].position
+            try require((0..<4).allSatisfy { p[$0].isFinite } && length(SIMD3(p.x,p.y,p.z)) <= 0.941,
+                        "Fragment \(id) is invalid or outside the glass")
+        }
+        try advance(Double(ContextParticles.fragmentAfterglow)+0.5)
+        try require(fragmentStates()[2] == 0,"Fragment tint never expired")
+
+        // Removing a pending file fades it without recruiting anything.
+        renderer.targetContextItems = [SnowGlobeContextItem(id: "d")]
+        try advance(1)
+        renderer.targetContextItems = []
+        try advance(0.5)
+        try require(!renderer.contexts.isVisible && fragmentStates()[1...].allSatisfy { $0 == 0 },
+                    "Removing a file broke it up or left it visible")
+
+        // Disconnecting lets pending particles fall and rest on the snow.
+        renderer.targetContextItems = [SnowGlobeContextItem(id: "e"),SnowGlobeContextItem(id: "f")]
+        try advance(1)
+        renderer.targetConnected = false
+        try advance(5)
+        for body in bodies().prefix(2) {
+            try require(body.y < -0.6 && body.y > -0.75,"Disconnected context particle did not rest on the bed: \(body)")
+        }
+        _ = try snapshot(renderer,url: output.appendingPathComponent("context-disconnected.png"),width: 600,height: 600)
+
+        // A full set of six, each on its own ring.
+        renderer.targetConnected = true
+        renderer.targetContextItems = (0..<6).map { SnowGlobeContextItem(id: "full-\($0)") }
+        try advance(4)
+        _ = try snapshot(renderer,url: output.appendingPathComponent("context-six.png"),width: 600,height: 600)
+        try advance(1.5)
+        _ = try snapshot(renderer,url: output.appendingPathComponent("context-six-later.png"),width: 600,height: 600)
+    }
+
     /// Validate the actual composited GPU output, including large particle halos
     /// at the glass edge and rectangular drawables in both appearances.
     static func checkTransparency(in output: URL) throws {

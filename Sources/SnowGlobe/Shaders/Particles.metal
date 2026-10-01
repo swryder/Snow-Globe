@@ -151,6 +151,43 @@ float3 currentPoint(Particle p, float phase, constant Uniforms &u) {
     return q;
 }
 
+// Mirrors ContextSlot and ContextBody in ContextParticles.swift. Each slot is
+// one large particle standing for a file the agent can see.
+struct ContextSlot {
+    float4 orbit; // phase, presence, remaining fraction, hue
+    float4 merge; // breakup start, duration (0 = none), fragment target, recruit gate
+    float4 look;  // size scale, snap to orbit, reserved, reserved
+};
+struct ContextBody {
+    float4 position; // xyz, unused
+    float4 velocity; // xyz in real time, unused
+};
+constant uint CONTEXT_SLOTS = 6;
+// Matches ContextParticles.releaseExponent: sparse first fragments, then a crumble.
+constant float RELEASE_EXPONENT = 0.6;
+
+// Each context particle rides its own ring inside the stream's volume: a
+// distinct tilt, radius, and height per slot, sharing the stream's slow
+// wandering so the rings stay related as it moves.
+constant float2 CONTEXT_TILT[6] = {float2(0.00,0.00),float2(0.34,0.22),float2(-0.30,0.30),
+                                   float2(0.18,-0.36),float2(-0.40,-0.16),float2(0.46,-0.06)};
+constant float CONTEXT_RADIUS[6] = {0.92,0.78,0.86,0.70,0.96,0.82};
+constant float CONTEXT_LIFT[6] = {0.00,0.07,-0.06,0.10,-0.09,0.03};
+
+float3 contextPoint(ContextSlot s, uint slot, constant Uniforms &u) {
+    float a = u.motion.z, t = u.motion.x;
+    float phase = s.orbit.x;
+    float radius = mix(0.47,0.84,smoothstep(0.02,0.75,a))*CONTEXT_RADIUS[slot];
+    radius *= 1.0+0.04*drift(t*0.19+float(slot)*13.0+57.0);
+    float height = CONTEXT_LIFT[slot]+(0.015+0.03*a)*sin(phase*2.0+drift(t*0.14+float(slot)*7.0+5.0)*2.0);
+    float3 q = float3(radius*cos(phase),height,radius*sin(phase));
+    float2 tilt = currentTilt(0.0,a,t)+CONTEXT_TILT[slot]
+                + float2(0.05*drift(t*0.11+float(slot)*29.0),0.04*drift(t*0.13+float(slot)*37.0));
+    q = orientCurrent(rotateZ(rotateX(q,tilt.x),tilt.y),u)+currentCenter(0.0,a,t);
+    float reach = length(q);
+    return reach > 0.86 ? q*0.86/reach : q;
+}
+
 // Speech enters behind the left shoulder; older syllables cross the front. Samples
 // come from the audio player's timeline, with a small spatial filter to soften
 // 10 ms envelope edges without inventing a periodic carrier wave.
@@ -284,15 +321,8 @@ float3 settledPosition(uint id) {
     return float3(horizontal.x,settledHeight(horizontal,hash(float(id)+4027.0)),horizontal.y);
 }
 
-kernel void integrateParticles(device const Particle *source [[buffer(0)]],
-                               device Particle *destination [[buffer(1)]],
-                               constant Uniforms &u [[buffer(2)]],
-                               device float4 *history [[buffer(3)]],
-                               constant float2 *speechSamples [[buffer(4)]],
-                               constant float2 *waveform [[buffer(5)]],
-                               uint id [[thread_position_in_grid]]) {
-    if (id >= u.counts.x) return;
-    Particle p = source[id];
+Particle advanceParticle(Particle p, uint id, constant Uniforms &u,
+                         constant float2 *speechSamples, constant float2 *waveform) {
     // Fullness and kinetic energy are independent. Idle uses a cloud shaped
     // like the former 40% state, advancing on a much slower flow clock.
     float realDT = u.timing.y;
@@ -307,9 +337,7 @@ kernel void integrateParticles(device const Particle *source [[buffer(0)]],
         if (p.appearance.w < -50.0 && !disturbed) {
             p.velocity = float4(0);
             p.appearance.y *= exp(-realDT*3.0);
-            destination[id] = p;
-            history[u.counts.w*u.counts.x+id] = p.position;
-            return;
+            return p;
         }
         p.appearance.w = 0;
         float rate = max(0.05,u.motion.y);
@@ -360,9 +388,7 @@ kernel void integrateParticles(device const Particle *source [[buffer(0)]],
         }
         p.velocity = float4(velocity/rate,p.velocity.w*exp(-realDT*8.0));
         p.appearance.y *= exp(-realDT*3.0);
-        destination[id] = p;
-        history[u.counts.w*u.counts.x+id] = p.position;
-        return;
+        return p;
     }
     if (u.connection.y < 0.5) {
         // Gravity replaces the currents. Preserve admission so every particle
@@ -372,9 +398,7 @@ kernel void integrateParticles(device const Particle *source [[buffer(0)]],
         if (p.appearance.w < -50.0) {
             p.velocity = float4(0);
             p.appearance.y *= exp(-realDT*3.0);
-            destination[id] = p;
-            history[u.counts.w*u.counts.x+id] = p.position;
-            return;
+            return p;
         }
         float rate = max(0.05,u.motion.y);
         float3 velocity = p.velocity.xyz*rate;
@@ -407,9 +431,7 @@ kernel void integrateParticles(device const Particle *source [[buffer(0)]],
         }
         p.velocity = float4(velocity/rate,p.velocity.w*exp(-realDT*8.0));
         p.appearance.y *= exp(-realDT*3.0);
-        destination[id] = p;
-        history[u.counts.w*u.counts.x+id] = p.position;
-        return;
+        return p;
     }
     if (p.appearance.w < -50.0) {
         p.appearance.w = atan2((p.position.z+0.06)/0.48,p.position.x/0.92);
@@ -569,6 +591,139 @@ kernel void integrateParticles(device const Particle *source [[buffer(0)]],
                      *densityAdmission(id,u.controls.x);
     p.position.w += (visibility-p.position.w)*(1.0-exp(-realDT*(3.0+6.0*u.response.x)));
     p.velocity.w *= exp(-realDT*(3.8+seed*2.2));
+    return p;
+}
+
+kernel void advanceContextItems(device ContextBody *bodies [[buffer(0)]],
+                                constant Uniforms &u [[buffer(1)]],
+                                constant ContextSlot *slots [[buffer(2)]],
+                                device float4 *history [[buffer(3)]],
+                                uint id [[thread_position_in_grid]]) {
+    if (id >= CONTEXT_SLOTS) return;
+    ContextSlot s = slots[id];
+    ContextBody b = bodies[id];
+    float dt = u.timing.y;
+    float3 target = contextPoint(s,id,u);
+    if (s.look.y > 0.5) {
+        b.position = float4(target,0); b.velocity = float4(0);
+        // A new particle starts with no trail behind it.
+        for (uint sample=0; sample<HISTORY_SAMPLES; ++sample) {
+            history[sample*CONTEXT_SLOTS+id] = float4(target,1);
+        }
+    }
+    float3 x = b.position.xyz, v = b.velocity.xyz;
+    if (u.connection.y > 0.5) {
+        // Critically damped follow. Reconnecting rises gently from the bed.
+        float stiffness = mix(5.0,90.0,u.connection.x);
+        v += ((target-x)*stiffness-v*2.0*sqrt(stiffness)+u.inertia.xyz*0.25)*dt;
+        x += v*dt;
+    } else {
+        // Fall with the snow and rest on top of the bed, spread around its center.
+        float3 down = u.gravity.xyz, up = -down;
+        float3 right = normalize(cross(up,abs(up.z) < 0.9 ? float3(0,0,1) : float3(1,0,0)));
+        float3 depth = cross(right,up);
+        float angle = TAU*(float(id)+0.5)/float(CONTEXT_SLOTS);
+        float restHeight = -0.70;
+        float3 toRest = (right*cos(angle)+depth*sin(angle))*0.28-x;
+        toRest -= up*dot(toRest,up);
+        bool grounded = dot(x,up) <= restHeight+0.004;
+        v += (toRest*(grounded ? 6.0 : 1.2)+down*2.4+u.inertia.xyz)*dt;
+        v *= exp(-(grounded ? 5.0 : 0.6)*dt);
+        x += v*dt;
+        float height = dot(x,up);
+        if (height < restHeight) {
+            x += up*(restHeight-height);
+            float impact = max(0.0,-dot(v,up));
+            v += up*impact*(1.0+0.25*smoothstep(0.08,0.5,impact));
+        }
+    }
+    float r = length(x);
+    if (r > 0.90) {
+        float3 normal = x/r;
+        x = normal*0.90;
+        v -= normal*max(0.0,dot(v,normal))*1.2;
+    }
+    bodies[id] = {float4(x,0),float4(v,0)};
+    history[u.counts.w*CONTEXT_SLOTS+id] = float4(x,1);
+}
+
+// The nearest phase on this particle's own guide, so a released fragment joins
+// the stream where it is instead of racing back to its old place.
+float nearestPhase(Particle p, float3 position, constant Uniforms &u) {
+    float best = p.orbit.x, bestDistance = 1e9;
+    for (uint n=0; n<32; ++n) {
+        float phase = float(n)*TAU/32.0;
+        float3 d = currentPoint(p,phase,u)-position;
+        if (dot(d,d) < bestDistance) { bestDistance = dot(d,d); best = phase; }
+    }
+    for (float step = TAU/64.0; step > TAU/1024.0; step *= 0.5) {
+        float3 a = currentPoint(p,best-step,u)-position;
+        float3 b = currentPoint(p,best+step,u)-position;
+        if (dot(a,a) < bestDistance) { bestDistance = dot(a,a); best -= step; }
+        if (dot(b,b) < bestDistance) { bestDistance = dot(b,b); best += step; }
+    }
+    return fmod(best+TAU,TAU);
+}
+
+// Fragment state per particle: hue, release time, state (0 none, 1 waiting,
+// 2 released), slot. Fragments are existing stream particles, so the visible
+// total never changes: each fades out where it is, then reappears at the
+// breaking particle with the file's hue and a sparkle.
+kernel void integrateParticles(device const Particle *source [[buffer(0)]],
+                               device Particle *destination [[buffer(1)]],
+                               constant Uniforms &u [[buffer(2)]],
+                               device float4 *history [[buffer(3)]],
+                               constant float2 *speechSamples [[buffer(4)]],
+                               constant float2 *waveform [[buffer(5)]],
+                               device float4 *fragments [[buffer(6)]],
+                               device const ContextBody *bodies [[buffer(7)]],
+                               constant ContextSlot *slots [[buffer(8)]],
+                               device atomic_uint *recruitCounts [[buffer(9)]],
+                               uint id [[thread_position_in_grid]]) {
+    if (id >= u.counts.x) return;
+    Particle p = source[id];
+    float4 shard = fragments[id];
+    float now = u.timing.x;
+    if (shard.z < 0.5 && p.orbit.w < 0.5 && p.position.w > 0.85) {
+        for (uint slot=0; slot<CONTEXT_SLOTS; ++slot) {
+            ContextSlot s = slots[slot];
+            // Fold the start time into a small offset: sin-based hashes lose
+            // precision with large arguments.
+            float event = fract(s.merge.x*0.1373)*211.0+float(slot)*13.0;
+            if (s.merge.w <= 0.0 || hash(float(id)*0.618+event) >= s.merge.w) continue;
+            if (atomic_fetch_add_explicit(&recruitCounts[slot],1,memory_order_relaxed) >= uint(s.merge.z)) continue;
+            float release = s.merge.x+s.merge.y*pow(hash(float(id)+5813.0+event),RELEASE_EXPONENT);
+            shard = float4(s.orbit.w,release,1,float(slot));
+            break;
+        }
+    }
+    if (shard.z > 0.5 && shard.z < 1.5 && now >= shard.y) {
+        ContextBody b = bodies[uint(shard.w)];
+        float3 direction = normalize(float3(hash(float(id)+6007.0),hash(float(id)+6011.0),hash(float(id)+6029.0))*2.0-1.0+0.0001);
+        float3 position = b.position.xyz+direction*0.028*pow(hash(float(id)+6047.0),0.33);
+        float reach = length(position);
+        if (reach > 0.93) position *= 0.93/reach;
+        float rate = max(0.05,u.motion.y);
+        // Shed from the surface with its parent's motion plus a gentle burst.
+        float burst = 0.16+0.42*hash(float(id)+6067.0);
+        p.position = float4(position,1);
+        p.velocity = float4((b.velocity.xyz+direction*burst)/rate,1);
+        p.appearance.w = 0;
+        if (u.connection.y > 0.5) p.orbit.x = nearestPhase(p,position,u);
+        // Start the path history here so the trail grows from the break point.
+        for (uint sample=0; sample<HISTORY_SAMPLES; ++sample) {
+            history[sample*u.counts.x+id] = p.position;
+        }
+        shard.z = 2;
+    }
+    p = advanceParticle(p,id,u,speechSamples,waveform);
+    if (shard.z > 0.5 && shard.z < 1.5) {
+        // Fade out where it is just before reappearing as a fragment.
+        p.position.w = min(p.position.w,saturate((shard.y-now)/0.25));
+    } else if (shard.z > 1.5 && now-shard.y > 6.0) {
+        shard = float4(0);
+    }
+    fragments[id] = shard;
     destination[id] = p;
     history[u.counts.w*u.counts.x+id] = p.position;
 }
@@ -789,9 +944,20 @@ float speechReturnVisibility(float3 position, uint id, constant Uniforms &u) {
     return mix(mix(1.0,mix(0.01,1.0,front),speaking),1.0,u.speechMode.x);
 }
 
+// A released fragment carries its file's hue and a fading sparkle back into
+// the stream: x is tint, y is glitter, z is hue.
+float3 fragmentGlow(float4 shard, uint id, constant Uniforms &u) {
+    if (shard.z < 1.5) return float3(0);
+    float age = max(0.0,u.timing.x-shard.y);
+    float twinkle = 0.55+0.45*drift(u.timing.x*(6.0+3.0*hash(float(id)+6101.0))+hash(float(id)+6113.0)*91.0);
+    return float3(exp(-age/1.8),exp(-age/0.7)*twinkle,shard.x);
+}
+
 ParticleVertex makeParticleVertex(uint vertexID, uint id,
-                                  device const Particle *particles, constant Uniforms &u, constant float2 *speechSamples, bool trailAppearance) {
+                                  device const Particle *particles, constant Uniforms &u, constant float2 *speechSamples,
+                                  device const float4 *fragments, bool trailAppearance) {
     Particle p = particles[id];
+    float3 glow = fragmentGlow(fragments[id],id,u);
     float2 corners[] = {float2(-1,-1),float2(1,-1),float2(-1,1),
                         float2(-1,1),float2(1,-1),float2(1,1)};
     float2 uv = corners[vertexID];
@@ -818,8 +984,9 @@ ParticleVertex makeParticleVertex(uint vertexID, uint id,
     float historicalGlow = localSpeech.x*0.35+localSpeech.y*accentSeed*0.20;
     float voiceLight = u.speech.w*(min(1.0,u.speechLight.x)*historicalGlow
                                  + u.speechLight.x*liveLight);
-    float sparkle = (quietSparkle+glint+voiceLight*0.7)*u.connection.x;
+    float sparkle = (quietSparkle+glint+voiceLight*0.7)*u.connection.x+glow.y*1.4;
     float radius = (0.66+pow(p.appearance.z,4.0)*0.85)*(0.72+front*0.45);
+    radius *= 1.0+0.55*glow.y;
     radius *= (1.0+0.35*energy+flash*0.9)*(1.0+0.15*glint);
     radius *= mix(1.16,1.0,u.timing.w)*u.controls.y*(1.0+voiceShape*0.16);
     radius *= particleFootprint(u);
@@ -839,13 +1006,14 @@ ParticleVertex makeParticleVertex(uint vertexID, uint id,
     float hue = colorSeed < 0.76 ? mix(0.46,0.83,colorSeed/0.76) : mix(0.0,0.15,(colorSeed-0.76)/0.24);
     float3 white = float3(0.88,0.94,1.0);
     float3 vivid = hsv(hue,0.72,1.0);
-    float3 color = mix(white,vivid,energy);
+    float3 color = mix(mix(white,vivid,energy),hsv(glow.z,0.82,1.0),glow.x);
     float brightness = (0.45+front*0.65)*(1.0+energy*0.5+sparkle*1.2);
     brightness *= (0.88+0.24*shimmer)*(1.0+voiceLight*0.75);
     brightness *= mix(0.45,1.0,u.connection.x);
     float hdrPeak = max(1.0,u.viewport.w);
     brightness += pow(flash,1.8)*(0.7+hdrPeak*0.9);
     brightness += energy*sparkle*max(0.0,hdrPeak-1.0)*0.65;
+    brightness += glow.y*(0.5+max(0.0,hdrPeak-1.0)*0.45);
     float returnVisibility = trailAppearance ? 1.0 : speechReturnVisibility(p.position.xyz,id,u);
     float opacity = p.position.w*mix(0.60+front*0.40,0.35+front*0.65,u.timing.w)*returnVisibility;
     ParticleVertex out;
@@ -868,7 +1036,7 @@ ParticleVertex makeParticleVertex(uint vertexID, uint id,
     out.visible = p.position.w;
     float pigmentValue = mix(0.62,0.86,front);
     float3 jewel = hsv(hue,1.0,pigmentValue);
-    out.pigment = float4(mix(float3(0.045,0.29,0.66),jewel,energy),energy);
+    out.pigment = float4(mix(mix(float3(0.045,0.29,0.66),jewel,energy),hsv(glow.z,1.0,pigmentValue),glow.x),energy);
     out.bloom = bloomVisibility(u);
     return out;
 }
@@ -876,8 +1044,9 @@ ParticleVertex makeParticleVertex(uint vertexID, uint id,
 vertex ParticleVertex particleVertex(uint vertexID [[vertex_id]], uint id [[instance_id]],
                                      device const Particle *particles [[buffer(0)]],
                                      constant Uniforms &u [[buffer(1)]],
-                                     constant float2 *speechSamples [[buffer(3)]]) {
-    return makeParticleVertex(vertexID,id,particles,u,speechSamples,false);
+                                     constant float2 *speechSamples [[buffer(3)]],
+                                     device const float4 *fragments [[buffer(4)]]) {
+    return makeParticleVertex(vertexID,id,particles,u,speechSamples,fragments,false);
 }
 
 // Look backward through the actual simulated path, interpolating fixed-step
@@ -903,9 +1072,12 @@ vertex TrailVertex trailVertex(uint vertexID [[vertex_id]], uint id [[instance_i
                                device const Particle *particles [[buffer(0)]],
                                constant Uniforms &u [[buffer(1)]],
                                device const float4 *history [[buffer(2)]],
-                               constant float2 *speechSamples [[buffer(3)]]) {
+                               constant float2 *speechSamples [[buffer(3)]],
+                               device const float4 *fragments [[buffer(4)]]) {
     Particle p = particles[id];
-    if (p.position.w < 0.003) {
+    // New fragments get a brief trail of their own, even with trails off.
+    float fragmentTrail = 0.45*fragmentGlow(fragments[id],id,u).y;
+    if (p.position.w < 0.003 || (u.controls.z <= 0.0005 && fragmentTrail < 0.01)) {
         return {float4(2,2,0,1),float2(0),float4(0),float3(0),u.timing.w,0};
     }
     float age = float(vertexID/2)/float(TRAIL_SEGMENTS);
@@ -917,6 +1089,7 @@ vertex TrailVertex trailVertex(uint vertexID [[vertex_id]], uint id [[instance_i
     // Stationary traces otherwise stack into luminous curtains of stale audio.
     // Live mode uses a shorter scale: about 0.2 s at the 50% trail setting.
     duration = mix(duration,min(duration,u.controls.z*0.4*(0.7+0.3*seed)*wanderingLength),liveWaveformWeight(u));
+    duration = max(duration,fragmentTrail);
     float lookback = age*duration/u.timing.y;
     float4 point = pathSample(id,lookback,history,u);
     float2 center = project(point.xyz);
@@ -931,7 +1104,7 @@ vertex TrailVertex trailVertex(uint vertexID [[vertex_id]], uint id [[instance_i
     width *= 0.30+0.70*sqrt(max(0.0,1.0-age));
     float globeRadius = min(u.viewport.x,u.viewport.y)*0.445;
     float2 ndc = (center*globeRadius+normal*side*width)*2.0/u.viewport.xy;
-    ParticleVertex appearance = makeParticleVertex(0,id,particles,u,speechSamples,true);
+    ParticleVertex appearance = makeParticleVertex(0,id,particles,u,speechSamples,fragments,true);
     float brightnessSeed = hash(float(id)+619.0);
     float brightness = (0.45+0.80*brightnessSeed)
                      *(0.90+0.24*drift(u.timing.x*0.43+brightnessSeed*173.0+97.0));
@@ -983,4 +1156,147 @@ fragment float4 particleFragment(ParticleVertex in [[stage_in]], constant Unifor
     lightColor = lightColor*(1.0-glint)+in.color.rgb*glint;
     lightAlpha += (1.0-lightAlpha)*glint;
     return mix(float4(lightColor,lightAlpha),darkParticle,in.dark)*mask;
+}
+
+// The large context particles are drawn like an enlarged stream particle:
+// a hot center inside a translucent glowing body, a luminous rim where that
+// body meets the surrounding glow, a broad halo, and star glints. Brightness
+// sits a little above SDR white where the display allows.
+struct ContextVertex {
+    float4 position [[position]];
+    float2 uv;
+    float4 color;
+    float3 pigment;
+    float dark;
+    float crackle;
+    float sparkle;
+};
+
+float contextSize(ContextSlot s, constant Uniforms &u) {
+    float remaining = s.orbit.z;
+    float size = s.orbit.y*s.look.x*(0.30+0.70*sqrt(remaining))*smoothstep(0.0,0.06,remaining);
+    return size*clamp(sqrt(u.controls.y/1.75),0.8,2.0);
+}
+
+// Core radius in pixels for a context particle at this point.
+float contextCoreRadius(ContextSlot s, float3 x, constant Uniforms &u) {
+    float globeRadius = min(u.viewport.x,u.viewport.y)*0.445;
+    float front = smoothstep(-0.8,0.8,x.z);
+    float perspective = 3.8/(3.8-x.z);
+    return max(5.0*u.viewport.z,globeRadius*0.053)*contextSize(s,u)*perspective*(0.85+0.25*front);
+}
+
+float contextLevel(constant Uniforms &u, float front) {
+    float hdrPeak = max(1.0,u.viewport.w);
+    return min(hdrPeak,1.4)*mix(0.80,1.0,front)*mix(0.45,1.0,u.connection.x);
+}
+
+// Step back while speech is on screen rather than compete with it.
+float contextOpacity(ContextSlot s, float front, constant Uniforms &u) {
+    return min(1.0,s.orbit.y*1.2)*mix(0.75,1.0,front)*mix(1.0,0.6,u.speechLight.w);
+}
+
+vertex ContextVertex contextVertex(uint vertexID [[vertex_id]], uint slot [[instance_id]],
+                                   device const ContextBody *bodies [[buffer(0)]],
+                                   constant Uniforms &u [[buffer(1)]],
+                                   constant ContextSlot *slots [[buffer(2)]]) {
+    ContextSlot s = slots[slot];
+    if (s.orbit.y < 0.003 || s.orbit.z < 0.003) {
+        return {float4(2,2,0,1),float2(0),float4(0),float3(0),u.timing.w,0,0};
+    }
+    float2 corners[] = {float2(-1,-1),float2(1,-1),float2(-1,1),
+                        float2(-1,1),float2(1,-1),float2(1,1)};
+    float2 uv = corners[vertexID];
+    float3 x = bodies[slot].position.xyz;
+    float3 v = bodies[slot].velocity.xyz;
+    float t = u.timing.x;
+    float front = smoothstep(-0.8,0.8,x.z);
+    bool breaking = s.merge.y > 0.0 && t >= s.merge.x;
+    // While breaking, the core flickers as pieces leave and shrinks with the
+    // fraction it still holds, vanishing as the last of it crumbles.
+    float crackle = breaking ? (0.5+0.5*drift(t*(9.0+float(slot))+float(slot)*31.0))*(0.4+0.6*(1.0-s.orbit.z)) : 0.0;
+    float twinkle = 0.5+0.5*drift(t*(0.9+0.15*float(slot))+float(slot)*17.0);
+    float core = contextCoreRadius(s,x,u);
+    // Stretch gently along the motion, as the stream particles do.
+    float2 center = project(x);
+    float2 screenVelocity = project(x+v*0.03)-center;
+    float speed = length(screenVelocity);
+    float2 along = speed > 0.00001 ? screenVelocity/speed : float2(1,0);
+    float2 across = float2(-along.y,along.x);
+    float stretch = 1.0+min(0.35,speed*9.0);
+    float globeRadius = min(u.viewport.x,u.viewport.y)*0.445;
+    float2 offset = (along*uv.x*stretch+across*uv.y)*core*3.6;
+    float2 ndc = (center*globeRadius+offset)*2.0/u.viewport.xy;
+    float level = contextLevel(u,front)*(0.94+0.12*twinkle)*(1.0+0.35*crackle);
+    float hue = s.orbit.w;
+    float3 color = hsv(hue,0.82,1.0)*level;
+    return {float4(ndc,0,1),uv,float4(color,contextOpacity(s,front,u)),
+            hsv(hue,1.0,mix(0.62,0.86,front)),u.timing.w,crackle,
+            smoothstep(0.55,1.0,twinkle)*0.8+crackle};
+}
+
+fragment float4 contextFragment(ContextVertex in [[stage_in]], constant Uniforms &u [[buffer(0)]]) {
+    float r2 = dot(in.uv,in.uv);
+    if (r2 > 1.0) discard_fragment();
+    float r = sqrt(r2);
+    float edge = 1.0/3.6;
+    float hdrPeak = max(1.0,u.viewport.w);
+    // Layers, inside out. The rim is brighter than the body it encloses.
+    float body = (1.0-smoothstep(edge*0.75,edge*1.05,r))*0.42;
+    float hot = exp(-r2*70.0)*0.95;
+    float rim = exp(-pow((r-edge*0.92)/(edge*0.16),2.0))*0.80;
+    float halo = (exp(-r2*9.0)*0.20+exp(-r2*26.0)*0.16)*(1.0+0.6*in.crackle);
+    float star = (exp(-abs(in.uv.x)*40.0-abs(in.uv.y)*4.0)
+                 +exp(-abs(in.uv.y)*40.0-abs(in.uv.x)*4.0))*in.sparkle*0.22;
+    float coverage = clamp(body+hot+rim+halo+star,0.0,0.98)*in.color.a;
+    // Center and rim run hotter and slightly whiter; the halo keeps the hue.
+    float3 white = float3(0.92,0.96,1.0)*min(hdrPeak,1.4);
+    float3 lit = in.color.rgb*(body+halo)+mix(in.color.rgb,white,0.30)*(hot*1.25+rim*1.15)+white*star;
+    float4 dark = float4(lit*in.color.a,coverage);
+    // Light mode: saturated pigment with the rim as the strongest edge.
+    float lightAlpha = clamp(body*1.6+rim*0.9+halo*0.7+hot*0.4,0.0,0.97)*in.color.a;
+    float3 lightRGB = (in.pigment*(body*1.6+rim*0.9+halo*0.7)+mix(in.pigment,float3(1),0.6)*hot*0.4
+                     +float3(1)*star*0.5)*in.color.a;
+    float4 light = float4(lightRGB,min(0.98,lightAlpha+star*0.4*in.color.a));
+    return mix(light,dark,in.dark)*globeCoverage(in.position.xy,u);
+}
+
+// Trails for the context particles follow the trail-length setting exactly
+// as the stream's do, reading the path recorded by advanceContextItems.
+float4 contextPathSample(uint slot, float age, device const float4 *history, constant Uniforms &u) {
+    float bounded = clamp(age,0.0,float(HISTORY_SAMPLES-2));
+    uint steps = uint(floor(bounded));
+    uint newer = (u.counts.w+HISTORY_SAMPLES-steps)%HISTORY_SAMPLES;
+    uint older = (newer+HISTORY_SAMPLES-1)%HISTORY_SAMPLES;
+    return mix(history[newer*CONTEXT_SLOTS+slot],history[older*CONTEXT_SLOTS+slot],fract(bounded));
+}
+
+vertex TrailVertex contextTrailVertex(uint vertexID [[vertex_id]], uint slot [[instance_id]],
+                                      constant Uniforms &u [[buffer(1)]],
+                                      constant ContextSlot *slots [[buffer(2)]],
+                                      device const float4 *history [[buffer(3)]]) {
+    ContextSlot s = slots[slot];
+    if (s.orbit.y < 0.003 || s.orbit.z < 0.003 || u.controls.z <= 0.0005) {
+        return {float4(2,2,0,1),float2(0),float4(0),float3(0),u.timing.w,0};
+    }
+    float age = float(vertexID/2)/float(TRAIL_SEGMENTS);
+    float side = vertexID%2 == 0 ? -1.0 : 1.0;
+    float duration = min(float(HISTORY_SAMPLES-2)*u.timing.y,u.controls.z*1.5*0.85);
+    float lookback = age*duration/u.timing.y;
+    float4 point = contextPathSample(slot,lookback,history,u);
+    float2 center = project(point.xyz);
+    float2 tangent = project(contextPathSample(slot,lookback-0.75,history,u).xyz)
+                   - project(contextPathSample(slot,lookback+0.75,history,u).xyz);
+    float tangentLength = length(tangent);
+    float2 normal = tangentLength > 0.000001 ? float2(-tangent.y,tangent.x)/tangentLength : float2(0,1);
+    float front = smoothstep(-0.8,0.8,point.z);
+    // About as wide as the head's body, like the stream's trails.
+    float width = contextCoreRadius(s,point.xyz,u)*0.95*(0.30+0.70*sqrt(max(0.0,1.0-age)));
+    float globeRadius = min(u.viewport.x,u.viewport.y)*0.445;
+    float2 ndc = (center*globeRadius+normal*side*width)*2.0/u.viewport.xy;
+    float3 color = hsv(s.orbit.w,0.82,1.0)*contextLevel(u,front);
+    float fade = pow(max(0.0,1.0-age),1.4)*2.4*point.w;
+    fade *= smoothstep(0.0005,0.004,tangentLength*duration/(1.5*u.timing.y));
+    return {float4(ndc,0,1),float2(side,age),float4(color,contextOpacity(s,front,u)),
+            hsv(s.orbit.w,1.0,mix(0.62,0.86,front)),u.timing.w,fade};
 }

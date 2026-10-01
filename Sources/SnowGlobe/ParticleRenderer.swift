@@ -65,6 +65,9 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
     private let integratePipeline: MTLComputePipelineState
     private let gridPipeline: MTLComputePipelineState
     private let collisionPipeline: MTLComputePipelineState
+    private let contextMotionPipeline: MTLComputePipelineState
+    private let contextPipeline: MTLRenderPipelineState
+    private let contextTrailPipeline: MTLRenderPipelineState
     private let globePipeline: MTLRenderPipelineState
     private let particlePipeline: MTLRenderPipelineState
     private let trailPipeline: MTLRenderPipelineState
@@ -77,9 +80,21 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
     private var scratch: MTLBuffer
     private let gridCounts: MTLBuffer
     private let gridIndices: MTLBuffer
+    /// Per-particle fragment state; see integrateParticles.
+    let fragmentState: MTLBuffer
+    let contextBodies: MTLBuffer
+    private let contextHistory: MTLBuffer
+    private let recruitCounts: MTLBuffer
     private let inFlight = DispatchSemaphore(value: 3)
 
     var speechMeter: SpeechMeter?
+    private(set) var contexts = ContextParticles()
+    private var contextSlots = [ContextSlot](repeating: ContextSlot(orbit: .zero, merge: .zero, look: .zero),
+                                             count: ContextParticles.slotCount)
+    /// The host's attached files. Reconciled against the previous list on every set.
+    var targetContextItems: [SnowGlobeContextItem] = [] {
+        didSet { if targetContextItems != oldValue { contexts.reconcile(targetContextItems, now: simulationTime) } }
+    }
     var glassBackdrop: GlassBackdrop?
     var motionInput: GlobeMotion? {
         didSet {
@@ -209,6 +224,7 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
         integratePipeline = try compute("integrateParticles")
         gridPipeline = try compute("buildGrid")
         collisionPipeline = try compute("collideParticles")
+        contextMotionPipeline = try compute("advanceContextItems")
 
         func render(vertex: String, fragment: String, blend: Bool) throws -> MTLRenderPipelineState {
             let descriptor = MTLRenderPipelineDescriptor()
@@ -227,6 +243,8 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
         particlePipeline = try render(vertex: "particleVertex", fragment: "particleFragment", blend: true)
         trailPipeline = try render(vertex: "trailVertex", fragment: "trailFragment", blend: true)
         lensPipeline = try render(vertex: "fullscreenVertex", fragment: "glassLensFragment", blend: false)
+        contextPipeline = try render(vertex: "contextVertex", fragment: "contextFragment", blend: true)
+        contextTrailPipeline = try render(vertex: "contextTrailVertex", fragment: "trailFragment", blend: true)
 
         func buffer(_ length: Int, _ label: String) throws -> MTLBuffer {
             guard let buffer = device.makeBuffer(length: length, options: .storageModeShared) else {
@@ -241,6 +259,10 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
         let cells = Self.gridSide * Self.gridSide * Self.gridSide
         gridCounts = try buffer(cells * 4, "Collision cell counts")
         gridIndices = try buffer(cells * Self.cellCapacity * 4, "Collision cell indices")
+        fragmentState = try buffer(Self.particleCount * MemoryLayout<SIMD4<Float>>.stride, "Context fragment state")
+        contextBodies = try buffer(ContextParticles.slotCount * MemoryLayout<ContextBody>.stride, "Context particles")
+        contextHistory = try buffer(Self.historySamples * ContextParticles.slotCount * MemoryLayout<SIMD4<Float>>.stride, "Context particle path history")
+        recruitCounts = try buffer(ContextParticles.slotCount * 4, "Context fragment recruit counts")
         super.init()
         CVMetalTextureCacheCreate(nil,nil,device,nil,&textureCache)
         dark = initialDark
@@ -296,6 +318,8 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
         ringOrientation = simd_quatf(angle: 0, axis: SIMD3<Float>(0,1,0))
         historyCursor = 0
         accumulator = 0
+        memset(fragmentState.contents(), 0, fragmentState.length)
+        memset(contextBodies.contents(), 0, contextBodies.length)
         guard let command = queue.makeCommandBuffer(),
               let encoder = command.makeComputeCommandEncoder() else {
             throw RendererFailure.unavailable("Could not initialize the particle simulation.")
@@ -406,6 +430,7 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
         simulationTime += dt
         flowTime += dt * (clockRate ?? motionRate)
         var u = uniforms(size: CGSize(width: 960, height: 960), clockRate: clockRate)
+        let stepSlots = advanceContexts(command: command, uniforms: &u)
         guard let integrate = command.makeComputeCommandEncoder() else { return }
         integrate.label = "Advect in organic currents"
         integrate.setBuffer(particles, offset: 0, index: 0)
@@ -415,6 +440,11 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
         speechHistory.withUnsafeBytes { integrate.setBytes($0.baseAddress!, length: $0.count, index: 4) }
         let waveform = targetSpeechWaveform.count == SpeechEnvelope.waveformSamples ? targetSpeechWaveform : [SIMD2<Float>](repeating: .zero,count: SpeechEnvelope.waveformSamples)
         waveform.withUnsafeBytes { integrate.setBytes($0.baseAddress!, length: $0.count, index: 5) }
+        integrate.setBuffer(fragmentState, offset: 0, index: 6)
+        integrate.setBuffer(contextBodies, offset: 0, index: 7)
+        let slots = stepSlots
+        slots.withUnsafeBytes { integrate.setBytes($0.baseAddress!, length: $0.count, index: 8) }
+        integrate.setBuffer(recruitCounts, offset: 0, index: 9)
         dispatch(integrate, integratePipeline)
         integrate.endEncoding()
 
@@ -447,11 +477,40 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
         }
     }
 
+    /// Move the large context particles and prepare this step's slots. Returns
+    /// the slots for integration, with recruit gates set only on a breakup's first step.
+    private func advanceContexts(command: MTLCommandBuffer, uniforms u: inout Uniforms) -> [ContextSlot] {
+        contexts.advance(dt: Self.fixedStep, now: simulationTime, flowFullness: u.motion.z, rate: u.motion.y)
+        let admitted = min(Float(Self.particleCount), max(10, density*Self.baseParticleCount))
+        let fullness = min(1, max(0, (activity-0.02)/0.68))
+        let mainStream = admitted*7200/16800*(0.33+0.67*fullness*fullness*(3-2*fullness))
+        let (slots, recruiting) = contexts.takeSlots(now: simulationTime, visibleStream: mainStream)
+        contextSlots = slots
+        if !recruiting.isEmpty, let clear = command.makeBlitCommandEncoder() {
+            for slot in recruiting { clear.fill(buffer: recruitCounts, range: slot*4..<slot*4+4, value: 0) }
+            clear.endEncoding()
+        }
+        if contexts.isVisible, let motion = command.makeComputeCommandEncoder() {
+            motion.label = "Move context particles"
+            motion.setComputePipelineState(contextMotionPipeline)
+            motion.setBuffer(contextBodies, offset: 0, index: 0)
+            motion.setBuffer(contextHistory, offset: 0, index: 3)
+            motion.setBytes(&u, length: MemoryLayout<Uniforms>.stride, index: 1)
+            let gpuSlots = slots
+            gpuSlots.withUnsafeBytes { motion.setBytes($0.baseAddress!, length: $0.count, index: 2) }
+            motion.dispatchThreads(MTLSize(width: ContextParticles.slotCount, height: 1, depth: 1),
+                                   threadsPerThreadgroup: MTLSize(width: ContextParticles.slotCount, height: 1, depth: 1))
+            motion.endEncoding()
+        }
+        return slots
+    }
+
     private func encodeParticles(_ encoder: MTLRenderCommandEncoder, uniforms: Uniforms) {
         var u = uniforms
         encoder.setFragmentBytes(&u,length: MemoryLayout<Uniforms>.stride,index: 0)
         speechHistory.withUnsafeBytes { encoder.setVertexBytes($0.baseAddress!,length: $0.count,index: 3) }
-        if u.controls.z > 0.0005 {
+        encoder.setVertexBuffer(fragmentState,offset: 0,index: 4)
+        if u.controls.z > 0.0005 || contexts.fragmentsActive(at: simulationTime) {
             encoder.setRenderPipelineState(trailPipeline)
             encoder.setVertexBuffer(particles,offset: 0,index: 0)
             encoder.setVertexBytes(&u,length: MemoryLayout<Uniforms>.stride,index: 1)
@@ -463,6 +522,19 @@ final class ParticleRenderer: NSObject, MTKViewDelegate {
         encoder.setVertexBuffer(particles,offset: 0,index: 0)
         encoder.setVertexBytes(&u,length: MemoryLayout<Uniforms>.stride,index: 1)
         encoder.drawPrimitives(type: .triangle,vertexStart: 0,vertexCount: 6,instanceCount: Self.particleCount)
+        if contexts.isVisible {
+            let slots = contextSlots
+            slots.withUnsafeBytes { encoder.setVertexBytes($0.baseAddress!,length: $0.count,index: 2) }
+            if u.controls.z > 0.0005 {
+                encoder.setRenderPipelineState(contextTrailPipeline)
+                encoder.setVertexBuffer(contextHistory,offset: 0,index: 3)
+                encoder.drawPrimitives(type: .triangleStrip,vertexStart: 0,
+                                       vertexCount: (Self.trailSegments+1)*2,instanceCount: ContextParticles.slotCount)
+            }
+            encoder.setRenderPipelineState(contextPipeline)
+            encoder.setVertexBuffer(contextBodies,offset: 0,index: 0)
+            encoder.drawPrimitives(type: .triangle,vertexStart: 0,vertexCount: 6,instanceCount: ContextParticles.slotCount)
+        }
     }
 
     private func backdropTexture(command: MTLCommandBuffer) -> (MTLTexture, CGRect)? {

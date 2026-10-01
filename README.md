@@ -100,6 +100,7 @@ All presentation defaults are defined by **`SnowGlobeConfiguration.default`**. T
 | --- | --- | --- |
 | `activity` (view input) | `0` | `0...1`, idle to maximum effort |
 | `isConnected` (view input) | `true` | `false` drops particles into the bottom of the globe |
+| `contextItems` (view input) | `[]` | Files the agent can see; see [Context files](#context-files) |
 | `appearance` | `.dark` | `.dark`, `.light`, or `.automatic` from SwiftUI color scheme |
 | `shape` | `.disc` | `.disc` or `.ring`; internal particle distribution only |
 | `particleCount` | **10,000** | `10...33_600`; maximum admitted population at full effort |
@@ -169,6 +170,34 @@ func setConnection(_ value: Bool) {
 ```
 
 The package does not open a network connection or stop a consumer's audio player. `isConnected` is a visual state input.
+
+## Context files
+
+When the user drops files into a chat, the globe can show them. Pass the current list as `contextItems`. Each **pending** item appears as a large, vivid particle on its own ring inside the stream. Changing an item to **committed** when the user sends their turn breaks the particle up into the stream: it sheds sparkling fragments in its own color while it shrinks, slowly at first and then in a final crumble, over about 1–1.5 seconds. The fragments carry the file's color and a short trail back into the current, then fade into ordinary particles.
+
+```swift
+@State private var files: [SnowGlobeContextItem] = []
+
+// A file was attached:
+files.append(SnowGlobeContextItem(id: attachment.id))
+
+// The user deleted it before sending: its particle fades out without breaking up.
+files.removeAll { $0.id == deleted.id }
+
+// The user sent the turn: every attached file breaks up into the stream.
+for index in files.indices { files[index].state = .committed }
+
+// Inside body:
+SnowGlobeView(activity: effort, contextItems: files)
+```
+
+- **Pass the whole list on every update.** The globe compares it with the previous list, so rebuilding the view never replays or loses an animation. Use stable, unique ids.
+- **Committed items can be dropped at any time** after the commit; a breakup in progress finishes on its own. An item that first appears already committed gets no particle.
+- **Up to six particles are shown**, each in a different hue spread around the color wheel (green, magenta, amber, cyan, red, blue), assigned so the visible particles stay as far apart in hue as possible. Additional files wait for a free slot; while any are waiting, the newest visible particle is slightly larger. On commit, files beyond six fold into the last breakup, which releases more fragments.
+- **The particle count does not change.** Fragments are existing stream particles: each fades out where it is just before reappearing at the breaking particle. Repeated turns never accumulate extra particles.
+- Large particles follow the trail-length setting like the rest of the stream, rise slightly above SDR white where headroom allows, dim while speech is shown, and fall to rest on the snow when disconnected.
+- A commit is usually paired with an activity increase as the agent starts work; set `activity` as you normally would. The globe does not change it.
+- The view's accessibility value includes the number of attached files, for example "40 percent, 3 files attached".
 
 ## Synchronize speech
 
@@ -249,7 +278,7 @@ Voice light uses a short rounded attack and release, independent of the longer w
 
 ## Rendering and resource ownership
 
-`Sources/SnowGlobe/ParticleRenderer.swift` and `Shaders/Particles.metal` remain implementation details. Consumers should use `SnowGlobeView`, `SnowGlobeConfiguration`, `SpeechMeter`, and `SpeechEnvelope`.
+`Sources/SnowGlobe/ParticleRenderer.swift` and `Shaders/Particles.metal` remain implementation details. Consumers should use `SnowGlobeView`, `SnowGlobeConfiguration`, `SnowGlobeContextItem`, `SpeechMeter`, and `SpeechEnvelope`.
 
 - Metal compute kernels run a fixed **120 Hz** simulation. Rendering follows the display refresh rate with a bounded catch-up step count.
 - The simulation maintains **33,600 particle slots**, a spatial collision grid, and **256 position-history samples per particle** for curved trails. History alone uses about **131 MiB per globe**. The prototype favors quality; reducing visible count currently does not reduce this allocation.
@@ -263,7 +292,7 @@ This is the completed visual prototype, not a performance-tuned low-memory widge
 
 ## Demo controls and command line
 
-The resizable macOS window includes light/dark appearance, simulated connection, Ring/Disc, activity, particle count, size, idle speed, normal and speaking trails, live waveform, speech expression, flash factor, and a text editor with standard Cut/Copy/Paste commands.
+The resizable macOS window includes light/dark appearance, simulated connection, **Attach file / Remove / Send** context-file controls, Ring/Disc, activity, particle count, size, idle speed, normal and speaking trails, live waveform, speech expression, flash factor, and a text editor with standard Cut/Copy/Paste commands.
 
 **Free-floating globe** moves the running globe into a draggable, borderless panel above ordinary windows and leaves the controls in a compact window. The **Glass transparency** slider appears in floating mode: 0% is solid glass, 100% is clear glass, and the initial setting is 25%. It changes the glass tint while keeping particle heads, trails, and emission at their normal opacity and brightness. Clear glass remains draggable and retains optical refraction. Turn the toggle off to return the globe to the main window. Activity, appearance, speech, and tuning controls continue to update the same renderer in either mode. Closing the controls quits the app and removes the floating globe.
 
@@ -333,7 +362,7 @@ The script builds the demo, runs the Xcode test target, and stores the `.xcresul
 SNOW_GLOBE_VALIDATION_OUTPUT="$PWD/build/validation" swift test -c release
 ```
 
-Tests cover the shipped defaults and input sanitation, mailbox/session semantics, audio analysis, CPU/GPU buffer layout, finite simulation, sphere confinement, organic wall-following currents, particle admission, count and size extremes, adaptive effort changes, curved trails, sparkle, EDR, live speech details, rapid speech completion, disconnect/settling/reconnect, small-size bloom, optical strength, edge-weighted refraction, backdrop color/orientation, moving viewport alignment, transparency after capture loss, and unchanged particle/trail color and coverage across glass transparency settings. The full Metal regression is a macOS test and requires a GPU; it reports a skip if Metal is unavailable. The API/audio tests also compile for iOS.
+Tests cover the shipped defaults and input sanitation, mailbox/session semantics, audio analysis, CPU/GPU buffer layout, finite simulation, sphere confinement, organic wall-following currents, particle admission, count and size extremes, adaptive effort changes, curved trails, sparkle, EDR, live speech details, rapid speech completion, disconnect/settling/reconnect, small-size bloom, optical strength, edge-weighted refraction, backdrop color/orientation, moving viewport alignment, transparency after capture loss, unchanged particle/trail color and coverage across glass transparency settings, and context files: slot and hue assignment, overflow, removal, staggered breakups, separate rings, exact fragment counts with an unchanged visible total, trails, and disconnected resting. The full Metal regression is a macOS test and requires a GPU; it reports a skip if Metal is unavailable. The API/audio tests also compile for iOS.
 
 `Tests/SnowGlobeTests/Fixtures/SpeechFixture.aiff` supplies reproducible spoken audio. Tests do not need an installed speech voice, network service, microphone, or audible playback. PNGs are SDR previews and clip HDR highlights; raw linear-light peak measurements are recorded separately.
 
@@ -347,6 +376,7 @@ Snow Globe/
 ├── Sources/SnowGlobe/
 │   ├── SnowGlobeView.swift            # Public SwiftUI view and platform bridges
 │   ├── SnowGlobeConfiguration.swift   # Defaults, ranges, appearance and modes
+│   ├── ContextParticles.swift         # Context file items and their particle bookkeeping
 │   ├── GlassBackdrop.swift           # Optional image mailbox for optical refraction
 │   ├── DesktopGlassCapture.swift     # macOS live desktop backdrop (ScreenCaptureKit)
 │   ├── SpeechMeter.swift              # Thread-safe live input

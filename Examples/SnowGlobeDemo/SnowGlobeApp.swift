@@ -113,6 +113,8 @@ struct ContentView: View {
     @State private var motion = GlobeMotion()
     @State private var motionSensitivity = Double(SnowGlobeConfiguration.default.motionSensitivity)
     @StateObject private var desktopGlass = DesktopGlassCapture()
+    @State private var contextItems: [SnowGlobeContextItem] = []
+    @State private var nextFile = 1
 
     init() {
         let args = CommandLine.arguments
@@ -225,7 +227,8 @@ struct ContentView: View {
 
                 GlobeSurface(globe: SnowGlobeView(activity: Float(activity), isConnected: connected,
                                                    configuration: globeConfiguration, speechMeter: speech.meter,
-                                                   glassBackdrop: desktopGlass.backdrop, motion: motion),
+                                                   glassBackdrop: desktopGlass.backdrop, motion: motion,
+                                                   contextItems: contextItems),
                              isFloating: floating,
                              glassEffect: glassEffect,capture: desktopGlass)
                     .frame(maxWidth: .infinity, maxHeight: floating ? 0 : .infinity)
@@ -311,6 +314,8 @@ struct ContentView: View {
                         .frame(width: 165)
                         .help("Disc fills the center through 40% effort, then gradually releases particles toward the glass")
                     }
+
+                    contextControls
 
                     HStack(alignment: .firstTextBaseline) {
                         HStack(spacing: 9) {
@@ -449,6 +454,36 @@ struct ContentView: View {
             }
             DispatchQueue.main.asyncAfter(deadline: .now()+1) { writeWindowInfo() }
         }
+    }
+
+    private var pendingFiles: Int { contextItems.filter { $0.state == .pending }.count }
+
+    /// Simulates files dropped into the chat, then sent with the user's turn.
+    private var contextControls: some View {
+        HStack(spacing: 8) {
+            Button("Attach file", systemImage: "doc.badge.plus") {
+                // The host drops committed items whenever it likes; the globe keeps animating.
+                contextItems.removeAll { $0.state == .committed }
+                contextItems.append(SnowGlobeContextItem(id: "file-\(nextFile)"))
+                nextFile += 1
+            }
+            .help("Add a file the agent can see. Up to six appear as large particles.")
+            Button("Remove", systemImage: "minus.circle") {
+                if let index = contextItems.lastIndex(where: { $0.state == .pending }) { contextItems.remove(at: index) }
+            }
+            .disabled(pendingFiles == 0)
+            .help("Delete the most recent attached file. Its particle fades out.")
+            Button("Send", systemImage: "paperplane") {
+                for index in contextItems.indices { contextItems[index].state = .committed }
+            }
+            .disabled(pendingFiles == 0)
+            .help("Complete the turn. Each file's particle breaks up into the stream.")
+            Spacer()
+            Text(pendingFiles == 1 ? "1 file attached" : "\(pendingFiles) files attached")
+                .font(.system(size: 11)).monospacedDigit().foregroundStyle(secondary)
+        }
+        .controlSize(.small)
+        .buttonStyle(.bordered)
     }
 
     /// Opt-in local QA metadata; never writes captured screen pixels.

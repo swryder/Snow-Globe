@@ -94,6 +94,14 @@ final class SnowGlobeTests: XCTestCase {
         try RenderValidation.checkGlassOpacity(in: directory)
     }
 
+    func testContextParticleBreakup() throws {
+        guard MTLCreateSystemDefaultDevice() != nil else { throw XCTSkip("Metal GPU required for render validation") }
+        let output = ProcessInfo.processInfo.environment["SNOW_GLOBE_CONTEXT_OUTPUT"] ??
+            FileManager.default.temporaryDirectory.appendingPathComponent("SnowGlobeContext-\(UUID().uuidString)").path
+        print("Context particle previews: \(output)")
+        try RenderValidation.checkContextParticles(in: URL(fileURLWithPath: output))
+    }
+
     func testProductionMetalRegression() throws {
         guard MTLCreateSystemDefaultDevice() != nil else { throw XCTSkip("Metal GPU required for render validation") }
         let directory = ProcessInfo.processInfo.environment["SNOW_GLOBE_VALIDATION_OUTPUT"] ??
