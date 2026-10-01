@@ -44,7 +44,7 @@ In Xcode, choose **File → Add Package Dependencies…** and enter:
 https://github.com/swryder/Snow-Globe.git
 ```
 
-Choose **Up to Next Major Version**, starting at **1.0.1**, and add the **SnowGlobe** library product to your app target. The public package can be downloaded without GitHub authentication. Do not add `Sources/` or `Particles.metal` to the app's Compile Sources phase; Swift Package Manager supplies the code and shader resources.
+Choose **Up to Next Major Version**, starting at **1.1.0**, and add the **SnowGlobe** library product to your app target. The public package can be downloaded without GitHub authentication. Do not add `Sources/` or `Particles.metal` to the app's Compile Sources phase; Swift Package Manager supplies the code and shader resources.
 
 For a Swift package consumer:
 
@@ -57,7 +57,7 @@ let package = Package(
     platforms: [.macOS(.v14), .iOS(.v17)],
     products: [.library(name: "MyAppComponents", targets: ["MyAppComponents"])],
     dependencies: [
-        .package(url: "https://github.com/swryder/Snow-Globe.git", from: "1.0.1")
+        .package(url: "https://github.com/swryder/Snow-Globe.git", from: "1.1.0")
     ],
     targets: [
         .target(name: "MyAppComponents", dependencies: [
@@ -67,7 +67,7 @@ let package = Package(
 )
 ```
 
-The repository's SwiftPM identity is **`snow-globe`**; the library product and Swift import are **`SnowGlobe`**. Releases use semantic version tags. The current release is **`1.0.1`**.
+The repository's SwiftPM identity is **`snow-globe`**; the library product and Swift import are **`SnowGlobe`**. Releases use semantic version tags. The current release is **`1.1.0`**.
 
 For local development, you can instead use **Add Local…** in Xcode or `.package(path: "../Snow-Globe")` in a consumer manifest. Local package identity follows the lowercased checkout directory name, so adjust the consumer's `package:` argument if you rename that directory. The included example deliberately uses a local dependency on `.` so changes to the library are immediately available in the demo.
 
