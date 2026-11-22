@@ -34,7 +34,38 @@ constant uint HISTORY_SAMPLES = 256;
 constant uint TRAIL_SEGMENTS = 24;
 constant uint SPEECH_SAMPLES = 480;
 
-float hash(float n) { return fract(sin(n * 127.1 + 311.7) * 43758.5453); }
+// Per-particle random numbers in [0, 1). The argument of sin() reaches several
+// million (particle id plus an offset, times 127.1). Metal's default fast
+// sin() is not accurate that far out on every GPU: on an M1 Max with macOS
+// 27.2.1 (Metal toolchain 32023.922) the old one-line hash returned 65
+// distinct values in 1,000 bins for 33,600 consecutive ids, so the particles'
+// random choices clumped. precise::sin fixes that but more than doubles the
+// idle frame's GPU time, so reduce the argument here instead: subtract the
+// nearest whole number of turns in two parts (Cody-Waite: 2*pi split into a
+// float part and its remainder) so the fast sin() only sees a small argument.
+// k is rounded from a float product, so the reduced argument is within about
+// +-3.6 for the particle-id inputs (n up to about 40,000) and +-4.7 for drift
+// cells up to 140,000; there the fast sin() on the M1 Max errs by under 1e-6
+// (its error grows about 8.6e-8 per unit of argument). Past n of about
+// 800,000, k no longer fits a float exactly and the argument grows past +-10.
+// Both fma() calls must stay fused multiply-adds: computed as a separate
+// multiply and subtract, x - k*hi loses the low bits this relies on.
+// HashQualityTests checks the result on the GPU.
+float hash(float n) {
+    float x = n * 127.1 + 311.7;
+    float k = rint(x * 0.159154943);          // whole turns, 1/(2*pi)
+    float r = fma(-k, 6.28318548, x);         // 2*pi rounded to float
+    r = fma(k, 1.74845553e-07, r);            // ... plus what that rounding lost
+    return fract(sin(r) * 43758.5453);
+}
+// Test hook for HashQualityTests (not used by the renderer):
+// out[i] = hash(float(i)*mapping.x + mapping.y).
+kernel void hashProbe(device float *out [[buffer(0)]],
+                      constant float2 &mapping [[buffer(1)]],
+                      uint id [[thread_position_in_grid]]) {
+    out[id] = hash(float(id)*mapping.x + mapping.y);
+}
+
 // Quintic interpolation gives continuous velocity and acceleration. Slowly
 // changing random values create drift without a repeating sine-wave cadence.
 float drift(float x) {
