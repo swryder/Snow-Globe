@@ -13,6 +13,7 @@
 		6D5C7C47D5FC1D701B215B0E /* GlobePresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2BFF681250D5D98291010E8 /* GlobePresentation.swift */; };
 		77084886E963411EF3459CB9 /* ContextParticlesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFED6580738614A65301449A /* ContextParticlesTests.swift */; };
 		B2CED364AEABCAE678A1BBA6 /* MotionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E7FDD31016B2F4DDA372B24 /* MotionTests.swift */; };
+		B4A1E2C3D4E5F60718293A4C /* HashQualityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4A1E2C3D4E5F60718293A4B /* HashQualityTests.swift */; };
 		C1A54F01EE9F69BD49A8626D /* SnowGlobeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C5B499A90A6BD5FBD8019D9 /* SnowGlobeApp.swift */; };
 		C5A2E7062EFFADD4C5E5A81A /* RenderValidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AFE97BA8E22D2FBD36F2BB3 /* RenderValidation.swift */; };
 		E02524D4887BC130E00EEFFE /* SnowGlobe in Frameworks */ = {isa = PBXBuildFile; productRef = 74F6D208780E035642CFC4E6 /* SnowGlobe */; };
@@ -29,6 +30,7 @@
 		931D586AAEBE49DCFEB1EAC8 /* Snow Globe */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "Snow Globe"; path = .; sourceTree = SOURCE_ROOT; };
 		9C5B499A90A6BD5FBD8019D9 /* SnowGlobeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnowGlobeApp.swift; sourceTree = "<group>"; };
 		A93FCAE84E886141EADDD2E1 /* Fixtures */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Fixtures; path = Tests/SnowGlobeTests/Fixtures; sourceTree = SOURCE_ROOT; };
+		B4A1E2C3D4E5F60718293A4B /* HashQualityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HashQualityTests.swift; sourceTree = "<group>"; };
 		BE24EFC797EC1F4BCBBD26EE /* SnowGlobeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnowGlobeTests.swift; sourceTree = "<group>"; };
 		CE1EF96B8BB58BA3786C63BE /* SpeechController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechController.swift; sourceTree = "<group>"; };
 		DFED6580738614A65301449A /* ContextParticlesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextParticlesTests.swift; sourceTree = "<group>"; };
@@ -99,6 +101,7 @@
 			children = (
 				DFED6580738614A65301449A /* ContextParticlesTests.swift */,
 				34D89E369CD7C0098FE7FC41 /* DesktopGlassCaptureTests.swift */,
+				B4A1E2C3D4E5F60718293A4B /* HashQualityTests.swift */,
 				2E7FDD31016B2F4DDA372B24 /* MotionTests.swift */,
 				1AFE97BA8E22D2FBD36F2BB3 /* RenderValidation.swift */,
 				BE24EFC797EC1F4BCBBD26EE /* SnowGlobeTests.swift */,
@@ -209,6 +212,7 @@
 			files = (
 				77084886E963411EF3459CB9 /* ContextParticlesTests.swift in Sources */,
 				0626EC5A5EED1E9B62B7A362 /* DesktopGlassCaptureTests.swift in Sources */,
+				B4A1E2C3D4E5F60718293A4C /* HashQualityTests.swift in Sources */,
 				B2CED364AEABCAE678A1BBA6 /* MotionTests.swift in Sources */,
 				C5A2E7062EFFADD4C5E5A81A /* RenderValidation.swift in Sources */,
 				FB980D0554B3F4174B565EBB /* SnowGlobeTests.swift in Sources */,
